@@ -1,0 +1,16 @@
+{
+  "name": "forge-virtual-vanguard-final",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "fastify": "^5.3.3",
+    "@fastify/websocket": "^11.2.0",
+    "openai": "^5.8.2",
+    "twilio": "^5.10.2"
+  }
+}
