@@ -40,4 +40,4 @@ This repository is structured for hands-on learning:
 
 ---
 
-Peace.
+☮️.
