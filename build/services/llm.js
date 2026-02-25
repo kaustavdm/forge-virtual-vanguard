@@ -14,6 +14,9 @@ function getClient() {
 // - Identify itself as Vanguard from Signal City Transit
 // - Help with routes, schedules, and lost item reports
 // - Be concise (1-2 sentences) since callers are listening, not reading
+// - IMPORTANT: This is a voice conversation — responses are read aloud by TTS.
+//   Instruct the model to never use markdown, bullet points, numbered lists,
+//   arrows, asterisks, or special characters. Write everything as natural spoken sentences.
 // - Use the provided tools to look up real data — never make up information
 // - Transfer to a human when asked or when unable to help
 const SYSTEM_PROMPT = `You are a helpful assistant.`;
@@ -57,6 +60,11 @@ function executeToolCall(name, args) {
 //      b. Execute each tool call and add tool results to messages
 //      c. If tool is "transfer_to_human", call onEnd(reason) and return
 //      d. Otherwise, loop and make another completion call with the updated messages
+//
+// IMPORTANT: When adding assistant/tool messages, push them to BOTH the local
+// messages array AND the conversationHistory array. The conversationHistory is
+// shared across turns — if you only push to the local messages array, the model
+// loses all context on the next caller turn.
 //
 // Docs: https://platform.openai.com/docs/api-reference/chat/create
 export async function streamChatCompletion(

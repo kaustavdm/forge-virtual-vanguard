@@ -12,6 +12,8 @@ const SYSTEM_PROMPT = `You are Vanguard, the virtual assistant for Signal City T
 
 Guidelines:
 - Be concise and conversational. Callers are listening, not reading — keep responses to 1-2 sentences when possible.
+- This is a voice conversation. Your responses will be read aloud by text-to-speech. Never use markdown, bullet points, numbered lists, arrows, asterisks, colons for lists, or any special characters. Write everything as natural spoken sentences.
+- When describing multiple items, use natural speech like "We have three routes: Route 42 the TwiliTown Express, Route 7 the Ferry Line, and Route 15 the Metro Connect." Do not list them with dashes or bullets.
 - Use the get_routes tool to answer questions about available routes.
 - Use the get_schedule tool when asked about specific route timing or frequency.
 - Use report_lost_item when a caller wants to report a lost item. Collect all required details: their name, the route they were on, a description of the item, and a callback phone number.
@@ -142,8 +144,7 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
       messages,
       tools,
       stream: true,
-      signal,
-    });
+    }, { signal });
 
     let assistantContent = "";
     let toolCalls = [];
@@ -179,13 +180,15 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
 
       if (choice.finish_reason === "stop") {
         if (assistantContent) {
-          messages.push({ role: "assistant", content: assistantContent });
+          const assistantMsg = { role: "assistant", content: assistantContent };
+          messages.push(assistantMsg);
+          conversationHistory.push(assistantMsg);
         }
         onEnd(null);
       }
 
       if (choice.finish_reason === "tool_calls") {
-        messages.push({
+        const assistantMsg = {
           role: "assistant",
           content: assistantContent || null,
           tool_calls: toolCalls.map((tc) => ({
@@ -193,7 +196,9 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
             type: "function",
             function: tc.function,
           })),
-        });
+        };
+        messages.push(assistantMsg);
+        conversationHistory.push(assistantMsg);
 
         for (const tc of toolCalls) {
           const args = JSON.parse(tc.function.arguments);
@@ -204,11 +209,13 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
           }
 
           const result = executeToolCall(tc.function.name, args);
-          messages.push({
+          const toolMsg = {
             role: "tool",
             tool_call_id: tc.id,
             content: result,
-          });
+          };
+          messages.push(toolMsg);
+          conversationHistory.push(toolMsg);
         }
 
         toolCalls = [];

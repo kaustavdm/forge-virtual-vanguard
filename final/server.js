@@ -1,6 +1,7 @@
 import "dotenv/config";
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
+import formbody from "@fastify/formbody";
 import twimlRoute from "./routes/twiml.js";
 import websocketRoute from "./routes/websocket.js";
 import intelligenceRoute from "./routes/intelligence.js";
@@ -21,6 +22,7 @@ if (missingVars.length > 0) {
 }
 
 const fastify = Fastify({ logger: true });
+fastify.register(formbody);
 
 await fastify.register(websocket);
 await fastify.register(twimlRoute);
@@ -33,7 +35,7 @@ fastify.get("/health", async () => ({
 }));
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || "0.0.0.0";
+const HOST = "0.0.0.0";
 
 try {
   await fastify.listen({ port: PORT, host: HOST });

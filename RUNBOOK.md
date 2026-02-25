@@ -143,7 +143,8 @@ Open `build/routes/twiml.js`. Currently it returns a simple `<Say>` response. Yo
 
 - Use `request.headers.host` to build the WebSocket URL: `wss://{host}/ws`
 - Set a `welcomeGreeting` for Signal City Transit
-- Set `voice` to `"en-US-Journey-O"` and `language` to `"en-US"`
+- Set `ttsProvider` to `"Google"` (required since we use Google TTS voices)
+- Add `<Language>` child elements for multi-language support: `en-US`, `en-GB`, `en-IN`, `en-AU`, `hi-IN` — each with an appropriate Google voice
 - Enable `interruptible` and `dtmfDetection`
 - If `TWILIO_INTELLIGENCE_SERVICE_SID` is set in the environment, add the `intelligenceService` attribute
 
@@ -162,8 +163,7 @@ export default async function twimlRoute(fastify) {
 
     let conversationRelayAttrs = `url="wss://${host}/ws"`;
     conversationRelayAttrs += ` welcomeGreeting="Hello! You've reached Signal City Transit. I'm Vanguard, your virtual assistant. How can I help you today?"`;
-    conversationRelayAttrs += ` voice="en-US-Journey-O"`;
-    conversationRelayAttrs += ` language="en-US"`;
+    conversationRelayAttrs += ` ttsProvider="Google"`;
     conversationRelayAttrs += ` interruptible="true"`;
     conversationRelayAttrs += ` dtmfDetection="true"`;
 
@@ -174,7 +174,13 @@ export default async function twimlRoute(fastify) {
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <ConversationRelay ${conversationRelayAttrs} />
+    <ConversationRelay ${conversationRelayAttrs}>
+      <Language code="en-US" voice="en-US-Journey-O" />
+      <Language code="en-GB" voice="en-GB-Journey-D" />
+      <Language code="en-IN" voice="en-IN-Journey-D" />
+      <Language code="en-AU" voice="en-AU-Journey-D" />
+      <Language code="hi-IN" voice="hi-IN-Wavenet-D" />
+    </ConversationRelay>
   </Connect>
 </Response>`;
 
@@ -426,6 +432,7 @@ The system prompt defines the agent's persona and behavior. Replace the placehol
 - Identify as "Vanguard" from Signal City Transit
 - Help with routes, schedules, and lost item reports
 - Be concise — 1-2 sentences per response (callers are listening, not reading)
+- **Voice-aware formatting:** This is a voice conversation — responses are read aloud by TTS. Instruct the model to never use markdown, bullet points, numbered lists, arrows, asterisks, or special characters. Everything should be natural spoken sentences.
 - Always use tools for data — never make up route information
 - Transfer to human when asked or when unable to help
 
@@ -437,6 +444,8 @@ const SYSTEM_PROMPT = `You are Vanguard, the virtual assistant for Signal City T
 
 Guidelines:
 - Be concise and conversational. Callers are listening, not reading — keep responses to 1-2 sentences when possible.
+- This is a voice conversation. Your responses will be read aloud by text-to-speech. Never use markdown, bullet points, numbered lists, arrows, asterisks, colons for lists, or any special characters. Write everything as natural spoken sentences.
+- When describing multiple items, use natural speech like "We have three routes: Route 42 the TwiliTown Express, Route 7 the Ferry Line, and Route 15 the Metro Connect." Do not list them with dashes or bullets.
 - Use the get_routes tool to answer questions about available routes.
 - Use the get_schedule tool when asked about specific route timing or frequency.
 - Use report_lost_item when a caller wants to report a lost item. Collect all required details: their name, the route they were on, a description of the item, and a callback phone number.
@@ -607,12 +616,15 @@ This is the most complex function. It streams tokens from OpenAI to the WebSocke
 **The flow:**
 
 1. Build the messages array: system prompt + conversation history
-2. Call `client.chat.completions.create()` with `stream: true`
+2. Call `client.chat.completions.create()` with `stream: true`. Pass `signal` in the second argument (request options) for abort support.
 3. Process the stream:
    - **Text tokens** (`delta.content`) → call `onToken(token)` immediately
    - **Tool call chunks** (`delta.tool_calls`) → accumulate arguments across chunks
-   - **Finish reason `"stop"`** → call `onEnd(null)` — conversation turn is complete
-   - **Finish reason `"tool_calls"`** → execute each tool, add results to messages, loop back to step 2
+   - **Finish reason `"stop"`** → persist assistant message to **both** `messages` and `conversationHistory`, then call `onEnd(null)`
+   - **Finish reason `"tool_calls"`** → persist assistant + tool result messages to **both** arrays, execute each tool, loop back to step 2
+
+> [!IMPORTANT]
+> You must push new messages to **both** the local `messages` array and the `conversationHistory` array. The `messages` array is local to this function call, while `conversationHistory` persists across caller turns. If you only update `messages`, the model loses all context on the next turn.
 
 > [!NOTE]
 > Tool calls arrive as incremental chunks in the stream. You need to accumulate the function name and arguments across multiple chunks before parsing.
@@ -634,8 +646,7 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
       messages,
       tools,
       stream: true,
-      signal,
-    });
+    }, { signal });
 
     let assistantContent = "";
     let toolCalls = [];
@@ -671,13 +682,15 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
 
       if (choice.finish_reason === "stop") {
         if (assistantContent) {
-          messages.push({ role: "assistant", content: assistantContent });
+          const assistantMsg = { role: "assistant", content: assistantContent };
+          messages.push(assistantMsg);
+          conversationHistory.push(assistantMsg);
         }
         onEnd(null);
       }
 
       if (choice.finish_reason === "tool_calls") {
-        messages.push({
+        const assistantMsg = {
           role: "assistant",
           content: assistantContent || null,
           tool_calls: toolCalls.map((tc) => ({
@@ -685,7 +698,9 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
             type: "function",
             function: tc.function,
           })),
-        });
+        };
+        messages.push(assistantMsg);
+        conversationHistory.push(assistantMsg);
 
         for (const tc of toolCalls) {
           const args = JSON.parse(tc.function.arguments);
@@ -696,11 +711,13 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
           }
 
           const result = executeToolCall(tc.function.name, args);
-          messages.push({
+          const toolMsg = {
             role: "tool",
             tool_call_id: tc.id,
             content: result,
-          });
+          };
+          messages.push(toolMsg);
+          conversationHistory.push(toolMsg);
         }
 
         toolCalls = [];

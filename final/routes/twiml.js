@@ -6,8 +6,7 @@ export default async function twimlRoute(fastify) {
 
     let conversationRelayAttrs = `url="wss://${host}/ws"`;
     conversationRelayAttrs += ` welcomeGreeting="Hello! You've reached Signal City Transit. I'm Vanguard, your virtual assistant. How can I help you today?"`;
-    conversationRelayAttrs += ` voice="en-US-Journey-O"`;
-    conversationRelayAttrs += ` language="en-US"`;
+    conversationRelayAttrs += ` ttsProvider="Google"`;
     conversationRelayAttrs += ` interruptible="true"`;
     conversationRelayAttrs += ` dtmfDetection="true"`;
 
@@ -18,7 +17,13 @@ export default async function twimlRoute(fastify) {
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <ConversationRelay ${conversationRelayAttrs} />
+    <ConversationRelay ${conversationRelayAttrs}>
+      <Language code="en-US" voice="en-US-Journey-O" />
+      <Language code="en-GB" voice="en-GB-Journey-D" />
+      <Language code="en-IN" voice="en-IN-Journey-D" />
+      <Language code="en-AU" voice="en-AU-Journey-D" />
+      <Language code="hi-IN" voice="hi-IN-Wavenet-D" />
+    </ConversationRelay>
   </Connect>
 </Response>`;
 
