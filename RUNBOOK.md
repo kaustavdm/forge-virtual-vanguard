@@ -909,16 +909,47 @@ export default async function intelligenceRoute(fastify) {
 2. Under **Settings → Webhooks**, set the webhook URL to: `{your_ngrok_url}/webhook/intelligence`
 3. Save
 
-#### 6.3 Enable specialized operator: Human Escalation Request
+#### 6.3 Create specialized operator: Human Escalation Request
 
-Conversational Intelligence offers specialized operators designed specifically for AI agent conversations. These are different from the pre-built operators — they're tuned for virtual agent interactions.
+Conversational Intelligence offers six specialized operators designed specifically for AI agent conversations. **These are not pre-built toggles** — each must be manually created as a Generative Custom Operator using prompts provided by Twilio's ML team. Here you'll create the Human Escalation Request operator.
 
-1. In your Intelligence Service, go to **Operators**
-2. Find and enable **"Human Escalation Request"** under specialized operators
-3. This operator detects when a customer wanted to speak with a human agent and returns `{"escalation": true}` or `{"escalation": false}`
+> [!IMPORTANT]
+> **Your task:** Create the Human Escalation Request operator in your Intelligence Service.
+
+**Steps:**
+
+1. In the [Twilio Console](https://console.twilio.com/), navigate to **Conversational Intelligence → Services** and select your service
+2. Click **"Create Custom Operator"**
+3. Configure the operator with these exact values:
+
+   | Field | Value |
+   |-------|-------|
+   | **Friendly Name** | `Human Escalation Request` |
+   | **Operator Type** | `Generative` |
+
+4. In the **Prompt** field, enter:
+
+   > You are an expert data annotator. You have been tasked with annotating transcripts of voice calls to a customer support center. Specifically, for each transcript you must decide if the customer requested a call escalation. An escalation refers to a customer being transferred or wanting to be transferred from a virtual agent to a human agent member of the customer support center's staff.
+
+5. In the **JSON Output Format** field, enter:
+
+   ```json
+   {
+     "type": "object",
+     "properties": {
+       "escalation": {
+         "type": "boolean"
+       }
+     }
+   }
+   ```
+
+6. Click **"Add to service"**
+
+This operator will return `{"escalation": true}` when a caller requested a human agent, and `{"escalation": false}` otherwise.
 
 > [!TIP]
-> See the [ConversationRelay integration docs](https://www.twilio.com/docs/conversational-intelligence/conversation-relay-integration) for the full list of specialized operators.
+> The [ConversationRelay integration docs](https://www.twilio.com/docs/conversational-intelligence/conversation-relay-integration) contain sample prompts and JSON schemas for all 6 specialized operators. See the [Generative Custom Operators docs](https://www.twilio.com/docs/conversational-intelligence/generative-custom-operators) for full details on the creation fields (Friendly Name, Prompt, JSON Output Format, Training Examples).
 
 #### 6.4 Test the full intelligence pipeline
 
@@ -934,13 +965,13 @@ Conversational Intelligence offers specialized operators designed specifically f
 
 #### 6.5 Other specialized operators
 
-> **Presenter-led discussion.** Twilio provides additional specialized operators for AI agent conversations:
+> **Presenter-led discussion.** Twilio's ML team provides 5 more Generative Custom Operators for AI agent conversations. Each is created the same way as the Human Escalation Request in section 6.3 — navigate to your Intelligence Service, click "Create Custom Operator", select Generative, and paste the sample prompt and JSON schema from the [ConversationRelay integration docs](https://www.twilio.com/docs/conversational-intelligence/conversation-relay-integration).
 >
-> - **Virtual Agent Task Completion** — Did the agent resolve the customer's request?
-> - **Hallucination Detection** — Did the agent say anything factually incorrect?
-> - **Toxicity Detection** — Did the agent use inappropriate language?
-> - **Virtual Agent Predictive CSAT** — Customer satisfaction score (0-5)
-> - **Customer Emotion Tagging** — Tracks customer sentiment throughout the call
+> - **Virtual Agent Task Completion** — Did the agent resolve the customer's request? Returns a JSON array of tasks with completion status.
+> - **Hallucination Detection** — Did the agent say anything factually incorrect or contradictory?
+> - **Toxicity Detection** — Did the agent use inappropriate or harmful language?
+> - **Virtual Agent Predictive CSAT** — Customer satisfaction score (0–5) derived from the conversation.
+> - **Customer Emotion Tagging** — Tracks and categorizes customer sentiment throughout the call.
 
 #### 6.6 Final review
 
