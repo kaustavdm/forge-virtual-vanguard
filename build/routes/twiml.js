@@ -12,6 +12,9 @@ export default async function twimlRoute(fastify) {
     //   hi-IN (voice: hi-IN-Wavenet-D)
     // - Enable interruptible and dtmfDetection
     // - If TWILIO_INTELLIGENCE_SERVICE_SID is set, add the intelligenceService attribute
+    // - Add <Play loop="0"> AFTER </Connect> with a hold music URL. When the agent sends
+    //   { type: "end" } to trigger a human transfer, ConversationRelay exits and Twilio
+    //   falls through to this verb, playing on-hold music for the caller indefinitely.
     //
     // Note: With <Language> elements, use <ConversationRelay ...>...</ConversationRelay>
     // instead of the self-closing <ConversationRelay ... /> form.

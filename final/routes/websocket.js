@@ -45,14 +45,17 @@ export default async function websocketRoute(fastify) {
                 );
               },
               (transferReason) => {
-                socket.send(
-                  JSON.stringify({ type: "text", token: "", last: true }),
-                );
-
                 if (transferReason) {
                   fastify.log.info(
                     { reason: transferReason },
                     "Transferring to human agent",
+                  );
+                  socket.send(
+                    JSON.stringify({
+                      type: "text",
+                      token: "Transferring you to a human agent, please wait.",
+                      last: true,
+                    }),
                   );
                   socket.send(
                     JSON.stringify({
@@ -62,6 +65,10 @@ export default async function websocketRoute(fastify) {
                         conversationHistory,
                       }),
                     }),
+                  );
+                } else {
+                  socket.send(
+                    JSON.stringify({ type: "text", token: "", last: true }),
                   );
                 }
               },

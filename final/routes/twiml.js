@@ -25,6 +25,7 @@ export default async function twimlRoute(fastify) {
       <Language code="hi-IN" voice="hi-IN-Wavenet-D" />
     </ConversationRelay>
   </Connect>
+  <Play loop="0">https://demo.twilio.com/docs/classic.mp3</Play>
 </Response>`;
 
     reply.type("text/xml").send(twiml);

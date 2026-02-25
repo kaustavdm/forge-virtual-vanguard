@@ -26,8 +26,12 @@ export default async function websocketRoute(fastify) {
           // 3. Call streamChatCompletion(conversationHistory, onToken, onEnd, currentAbortController.signal)
           //    - Pass currentAbortController.signal as the 4th argument to support cancellation on interrupt
           //    - onToken callback: send { type: "text", token, last: false } via socket
-          //    - onEnd callback: send { type: "text", token: "", last: true } via socket
-          //      If transferReason is provided, also send { type: "end", handoffData: ... }
+          //    - onEnd callback:
+          //      - If transferReason is set: speak "Transferring you to a human agent, please wait."
+          //        as { type: "text", token: "...", last: true }, then send { type: "end", handoffData: ... }
+          //        Twilio will fall through to <Play loop="0"> in TwiML and play hold music.
+          //      - Otherwise (normal end): send { type: "text", token: "", last: true } only.
+          //        Do NOT send { type: "end" } — ConversationRelay stays open until disconnect.
           // 4. Handle errors gracefully - send an apology message to the caller
           //
           // Docs: https://www.twilio.com/docs/voice/conversationrelay/websocket-messages

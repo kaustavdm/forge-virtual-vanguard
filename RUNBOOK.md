@@ -147,6 +147,7 @@ Open `build/routes/twiml.js`. Currently it returns a simple `<Say>` response. Yo
 - Add `<Language>` child elements for multi-language support: `en-US`, `en-GB`, `en-IN`, `en-AU`, `hi-IN` — each with an appropriate Google voice
 - Enable `interruptible` and `dtmfDetection`
 - If `TWILIO_INTELLIGENCE_SERVICE_SID` is set in the environment, add the `intelligenceService` attribute
+- Add `<Play loop="0">` **after** `</Connect>` with a hold music URL — when the agent sends `{ type: "end" }` to trigger a human transfer, ConversationRelay exits and Twilio falls through to this verb, playing on-hold music for the caller
 
 > [!TIP]
 > See the [ConversationRelay noun docs](https://www.twilio.com/docs/voice/conversationrelay/conversationrelay-noun) for all available attributes.
@@ -182,6 +183,7 @@ export default async function twimlRoute(fastify) {
       <Language code="hi-IN" voice="hi-IN-Wavenet-D" />
     </ConversationRelay>
   </Connect>
+  <Play loop="0">https://demo.twilio.com/docs/classic.mp3</Play>
 </Response>`;
 
     reply.type("text/xml").send(twiml);
@@ -262,7 +264,9 @@ This is the core handler. When the caller speaks, ConversationRelay transcribes 
 - Maintain a `conversationHistory` array and an `AbortController` for cancellation
 - Call `streamChatCompletion(conversationHistory, onToken, onEnd, currentAbortController.signal)`:
   - `onToken(token)` — Send `{ type: "text", token, last: false }` via the socket
-  - `onEnd(transferReason)` — Send `{ type: "text", token: "", last: true }`. If `transferReason` is not null, also send `{ type: "end", handoffData: JSON.stringify({ reason, conversationHistory }) }`
+  - `onEnd(transferReason)`:
+    - If `transferReason` is **not null** (human transfer): speak `"Transferring you to a human agent, please wait."` as `{ type: "text", token: "...", last: true }`, then immediately send `{ type: "end", handoffData: JSON.stringify({ reason, conversationHistory }) }`. Twilio will fall through to the `<Play loop="0">` in TwiML and play hold music.
+    - If `transferReason` is **null** (normal end): send `{ type: "text", token: "", last: true }` to finalize TTS. Do **not** send `{ type: "end" }` — ConversationRelay stays open until the call disconnects naturally.
 - Wrap in try/catch — on error, send an apology message to the caller
 
 <details>
@@ -305,14 +309,17 @@ case "prompt":
         );
       },
       (transferReason) => {
-        socket.send(
-          JSON.stringify({ type: "text", token: "", last: true }),
-        );
-
         if (transferReason) {
           fastify.log.info(
             { reason: transferReason },
             "Transferring to human agent",
+          );
+          socket.send(
+            JSON.stringify({
+              type: "text",
+              token: "Transferring you to a human agent, please wait.",
+              last: true,
+            }),
           );
           socket.send(
             JSON.stringify({
@@ -322,6 +329,10 @@ case "prompt":
                 conversationHistory,
               }),
             }),
+          );
+        } else {
+          socket.send(
+            JSON.stringify({ type: "text", token: "", last: true }),
           );
         }
       },
