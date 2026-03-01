@@ -1,11 +1,9 @@
-import { streamChatCompletion } from "../services/llm.js";
+import { streamResponse } from "../services/llm.js";
 
-const sessions = new Map(); // Map of message.callSid to `{ conversationHistory, abortController }`
+const sessions = new Map(); // Map of callSid to { conversationHistory, abortController }
 
 export default async function websocketRoute(fastify) {
   fastify.get("/ws", { websocket: true }, (socket, request) => {
-    let currentAbortController = null;
-
     fastify.log.info("WebSocket connection established");
 
     socket.on("message", async (data) => {
@@ -23,23 +21,17 @@ export default async function websocketRoute(fastify) {
           const { callSid } = message;
           fastify.log.info({ callSid }, "Call connected");
 
-          // Make a new session entry for this callSid
           sessions.set(callSid, {
             conversationHistory: [],
             abortController: null,
-          })
+          });
 
-          // Set the callSid on the socket for easy access in future messages
           socket.callSid = callSid;
           break;
 
         case "prompt":
           fastify.log.info({ voicePrompt: message.voicePrompt }, "Caller said");
           session = sessions.get(socket.callSid);
-          session.conversationHistory.push({
-            role: "user",
-            content: message.voicePrompt,
-          });
 
           if (session.abortController) {
             session.abortController.abort();
@@ -47,36 +39,38 @@ export default async function websocketRoute(fastify) {
           session.abortController = new AbortController();
 
           try {
-            await streamChatCompletion(
+            session.conversationHistory.push({ role: "user", content: message.voicePrompt });
+
+            const { transferReason } = await streamResponse(
               session.conversationHistory,
               (token) => {
                 socket.send(JSON.stringify({ type: "text", token, last: false }));
               },
-              (transferReason) => {
-                if (transferReason) {
-                  fastify.log.info({ reason: transferReason }, "Transferring to human agent");
-                  socket.send(
-                    JSON.stringify({
-                      type: "text",
-                      token: "Transferring you to a human agent, please wait.",
-                      last: true,
-                    }),
-                  );
-                  socket.send(
-                    JSON.stringify({
-                      type: "end",
-                      handoffData: JSON.stringify({
-                        reason: transferReason,
-                        conversationHistory: session.conversationHistory,
-                      }),
-                    }),
-                  );
-                } else {
-                  socket.send(JSON.stringify({ type: "text", token: "", last: true }));
-                }
-              },
               session.abortController.signal,
+              fastify.log,
             );
+
+            if (transferReason) {
+              fastify.log.info({ reason: transferReason }, "Transferring to human agent");
+              socket.send(
+                JSON.stringify({
+                  type: "text",
+                  token: "Transferring you to a human agent, please wait.",
+                  last: true,
+                }),
+              );
+              socket.send(
+                JSON.stringify({
+                  type: "end",
+                  handoffData: JSON.stringify({
+                    reason: transferReason,
+                    conversationHistory: session.conversationHistory,
+                  }),
+                }),
+              );
+            } else {
+              socket.send(JSON.stringify({ type: "text", token: "", last: true }));
+            }
           } catch (error) {
             if (error.name !== "AbortError" && error.name !== "APIUserAbortError") {
               fastify.log.error(error, "LLM streaming error");
@@ -115,9 +109,9 @@ export default async function websocketRoute(fastify) {
 
     socket.on("close", () => {
       fastify.log.info("WebSocket connection closed");
-      const { abortController } = sessions.get(socket.callSid);
-      if (abortController) {
-        abortController.abort();
+      const session = sessions.get(socket.callSid);
+      if (session?.abortController) {
+        session.abortController.abort();
       }
     });
   });

@@ -10,6 +10,8 @@ function getClient() {
   return client;
 }
 
+const MODEL = process.env.MODEL || "gpt-5-mini";
+
 export const SYSTEM_PROMPT = `You are Vanguard, the virtual assistant for Signal City Transit. You help callers with route information, schedules, and lost item reports.
 
 Guidelines:
@@ -18,91 +20,83 @@ Guidelines:
 - When describing multiple items, use natural speech like "We have three routes: Route 42 the TwiliTown Express, Route 7 the Ferry Line, and Route 15 the Metro Connect." Do not list them with dashes or bullets.
 - Use the get_routes tool to answer questions about available routes.
 - Use the get_schedule tool when asked about specific route timing or frequency.
-- Use report_lost_item when a caller wants to report a lost item. Collect all required details: their name, the route they were on, a description of the item, and a callback phone number.
-- Use transfer_to_human when the caller explicitly asks to speak with a person or agent, or when you cannot help with their request.
+- Use report_lost_item when a caller wants to report a lost item. Collect all required details _one by one_: their name, the route they were on, a description of the item, and a callback phone number.
+- Use transfer_to_human when the caller explicitly asks to speak with a person or agent, or when you cannot fulfill their request.
 - Never make up route or schedule information. Only share data returned by the tools.
 - If a caller asks about something outside your capabilities, offer to transfer them to a human agent.`;
 
 const tools = [
   {
     type: "function",
-    function: {
-      name: "get_routes",
-      description:
-        "Get a list of all Signal City Transit routes with their stops and descriptions.",
-      parameters: { type: "object", properties: {}, required: [] },
+    name: "get_routes",
+    description:
+      "Get a list of all Signal City Transit routes with their stops and descriptions.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  {
+    type: "function",
+    name: "get_schedule",
+    description:
+      "Get the schedule for a specific Signal City Transit route, including weekday and weekend service hours and frequency.",
+    parameters: {
+      type: "object",
+      properties: {
+        route_name: {
+          type: "string",
+          description:
+            'The name or partial name of the route (e.g. "Ferry", "Route 42", "Metro")',
+        },
+      },
+      required: ["route_name"],
     },
   },
   {
     type: "function",
-    function: {
-      name: "get_schedule",
-      description:
-        "Get the schedule for a specific Signal City Transit route, including weekday and weekend service hours and frequency.",
-      parameters: {
-        type: "object",
-        properties: {
-          route_name: {
-            type: "string",
-            description:
-              'The name or partial name of the route (e.g. "Ferry", "Route 42", "Metro")',
-          },
+    name: "report_lost_item",
+    description:
+      "Report a lost item on Signal City Transit. Collects caller details and creates a report.",
+    parameters: {
+      type: "object",
+      properties: {
+        caller_name: {
+          type: "string",
+          description: "The caller's name",
         },
-        required: ["route_name"],
+        route_name: {
+          type: "string",
+          description: "The route the caller was on when they lost the item",
+        },
+        item_description: {
+          type: "string",
+          description: "Description of the lost item",
+        },
+        contact_phone: {
+          type: "string",
+          description: "Phone number to reach the caller about the item",
+        },
       },
+      required: [
+        "caller_name",
+        "route_name",
+        "item_description",
+        "contact_phone",
+      ],
     },
   },
   {
     type: "function",
-    function: {
-      name: "report_lost_item",
-      description:
-        "Report a lost item on Signal City Transit. Collects caller details and creates a report.",
-      parameters: {
-        type: "object",
-        properties: {
-          caller_name: {
-            type: "string",
-            description: "The caller's name",
-          },
-          route_name: {
-            type: "string",
-            description: "The route the caller was on when they lost the item",
-          },
-          item_description: {
-            type: "string",
-            description: "Description of the lost item",
-          },
-          contact_phone: {
-            type: "string",
-            description: "Phone number to reach the caller about the item",
-          },
+    name: "transfer_to_human",
+    description:
+      "Transfer the caller to a human agent. Use when the caller requests a person or when you cannot fulfill their request.",
+    parameters: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          description: "Brief reason for the transfer",
         },
-        required: [
-          "caller_name",
-          "route_name",
-          "item_description",
-          "contact_phone",
-        ],
       },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "transfer_to_human",
-      description:
-        "Transfer the caller to a human agent. Use when the caller requests a person or when you cannot fulfill their request.",
-      parameters: {
-        type: "object",
-        properties: {
-          reason: {
-            type: "string",
-            description: "Brief reason for the transfer",
-          },
-        },
-        required: ["reason"],
-      },
+      required: ["reason"],
     },
   },
 ];
@@ -133,102 +127,77 @@ function executeToolCall(name, args) {
   }
 }
 
-export async function streamChatCompletion(conversationHistory, onToken, onEnd, signal) {
-  const messages = [{ role: "system", content: SYSTEM_PROMPT }, ...conversationHistory];
-
-  let continueLoop = true;
-
-  while (continueLoop) {
-    continueLoop = false;
-
-    const stream = await getClient().chat.completions.create({
-      model: "gpt-5-nano",
-      messages,
+export async function streamResponse(conversationHistory, onToken, signal, log) {
+  while (true) {
+    const stream = await getClient().responses.create({
+      model: MODEL,
+      instructions: SYSTEM_PROMPT,
+      input: conversationHistory,
       tools,
       stream: true,
     }, { signal });
 
-    let assistantContent = "";
-    let toolCalls = [];
+    const toolCalls = [];
+    let outputText = "";
 
-    for await (const chunk of stream) {
-      const choice = chunk.choices[0];
-      if (!choice) continue;
-
-      const delta = choice.delta;
-
-      if (delta?.content) {
-        assistantContent += delta.content;
-        onToken(delta.content);
+    for await (const event of stream) {
+      if (event.type === "response.output_text.delta") {
+        onToken(event.delta);
       }
 
-      if (delta?.tool_calls) {
-        for (const tc of delta.tool_calls) {
-          if (tc.index !== undefined) {
-            if (!toolCalls[tc.index]) {
-              toolCalls[tc.index] = {
-                id: tc.id || "",
-                function: { name: "", arguments: "" },
-              };
-            }
-            if (tc.id) toolCalls[tc.index].id = tc.id;
-            if (tc.function?.name)
-              toolCalls[tc.index].function.name += tc.function.name;
-            if (tc.function?.arguments)
-              toolCalls[tc.index].function.arguments += tc.function.arguments;
-          }
-        }
+      if (event.type === "response.output_text.done") {
+        outputText = event.text;
       }
 
-      if (choice.finish_reason === "stop") {
-        if (assistantContent) {
-          const assistantMsg = { role: "assistant", content: assistantContent };
-          messages.push(assistantMsg);
-          conversationHistory.push(assistantMsg);
-        }
-        onEnd(null);
-      }
-
-      if (choice.finish_reason === "tool_calls") {
-        const assistantMsg = {
-          role: "assistant",
-          content: assistantContent || null,
-          tool_calls: toolCalls.map((tc) => ({
-            id: tc.id,
-            type: "function",
-            function: tc.function,
-          })),
-        };
-        messages.push(assistantMsg);
-        conversationHistory.push(assistantMsg);
-
-        let transferReason = null;
-
-        for (const tc of toolCalls) {
-          const args = JSON.parse(tc.function.arguments);
-          const result = executeToolCall(tc.function.name, args);
-          const toolMsg = {
-            role: "tool",
-            tool_call_id: tc.id,
-            content: result,
-          };
-          messages.push(toolMsg);
-          conversationHistory.push(toolMsg);
-
-          if (tc.function.name === "transfer_to_human") {
-            transferReason = args.reason;
-          }
-        }
-
-        if (transferReason) {
-          onEnd(transferReason);
-          return;
-        }
-
-        toolCalls = [];
-        assistantContent = "";
-        continueLoop = true;
+      if (event.type === "response.output_item.done" && event.item.type === "function_call") {
+        toolCalls.push({
+          callId: event.item.call_id,
+          name: event.item.name,
+          arguments: event.item.arguments,
+        });
       }
     }
+
+    if (toolCalls.length === 0) {
+      log.info({ response: outputText }, "LLM response");
+      conversationHistory.push({ role: "assistant", content: outputText });
+      return { transferReason: null };
+    }
+
+    for (const tc of toolCalls) {
+      log.info({ tool: tc.name, arguments: tc.arguments }, "LLM tool call");
+    }
+
+    // Execute tool calls and check for transfer
+    let transferReason = null;
+
+    for (const tc of toolCalls) {
+      conversationHistory.push({
+        type: "function_call",
+        call_id: tc.callId,
+        name: tc.name,
+        arguments: tc.arguments,
+      });
+
+      const args = JSON.parse(tc.arguments);
+      const result = executeToolCall(tc.name, args);
+      log.info({ tool: tc.name, result }, "Tool result");
+
+      conversationHistory.push({
+        type: "function_call_output",
+        call_id: tc.callId,
+        output: result,
+      });
+
+      if (tc.name === "transfer_to_human") {
+        transferReason = args.reason;
+      }
+    }
+
+    if (transferReason) {
+      return { transferReason };
+    }
+
+    // Loop continues — LLM will process tool results and respond
   }
 }
