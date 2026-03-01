@@ -5,11 +5,6 @@ export default async function twimlRoute(fastify) {
     // Requirements:
     // - Set the WebSocket URL to wss://{request.headers.host}/ws
     // - Set a welcomeGreeting message for Signal City Transit
-    // - Set ttsProvider to "Google" (required for Google voices)
-    // - Add <Language> child elements for multi-language support:
-    //   en-US (voice: en-US-Journey-O), en-GB (voice: en-GB-Journey-D),
-    //   en-IN (voice: en-IN-Journey-D), en-AU (voice: en-AU-Journey-D),
-    //   hi-IN (voice: hi-IN-Wavenet-D)
     // - Enable interruptible and dtmfDetection
     // - If TWILIO_INTELLIGENCE_SERVICE_SID is set, add the intelligenceService attribute
     // - Add <Play loop="0"> AFTER </Connect> with a hold music URL. When the agent sends
@@ -19,6 +14,7 @@ export default async function twimlRoute(fastify) {
     // Note: With <Language> elements, use <ConversationRelay ...>...</ConversationRelay>
     // instead of the self-closing <ConversationRelay ... /> form.
     //
+    // For Voice: see https://www.twilio.com/docs/voice/conversationrelay/voice-configuration.
     // Reply with Content-Type "text/xml"
     //
     // Docs: https://www.twilio.com/docs/voice/twiml/connect/conversationrelay

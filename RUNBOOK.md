@@ -156,16 +156,21 @@ Open `build/routes/twiml.js`. Currently it returns a simple `<Say>` response.
 
 **Key implementation points:**
 
-- Use `request.headers.host` to build the WebSocket URL: `wss://{host}/ws`
+- Use `request.headers.host` to build the WebSocket URL: `wss://${request.headers.host}/ws`
 - Set a `welcomeGreeting` for Signal City Transit
-- Set `ttsProvider` to `"Google"` (required since we use Google TTS voices)
-- Add `<Language>` child elements for multi-language support: `en-US`, `en-GB`, `en-IN`, `en-AU`, `hi-IN` — each with an appropriate Google voice
+- Set `ttsProvider` to `"ElevenLabs"` (this is the default)
+- To add custom voices, see the docs on [Picking a Voice](https://www.twilio.com/docs/voice/conversationrelay/voice-configuration)
 - Enable `interruptible` and `dtmfDetection`
 - If `TWILIO_INTELLIGENCE_SERVICE_SID` is set in the environment, add the `intelligenceService` attribute
-- Add `<Play loop="0">` **after** `</Connect>` with a hold music URL — when the agent sends `{ type: "end" }` to trigger a human transfer, ConversationRelay exits and Twilio falls through to this verb, playing on-hold music for the caller
+- Add `<Play loop="0">` **after** `</Connect>` with a hold music URL — when the agent sends `{ type: "end" }` to trigger a human transfer example.
+    - ConversationRelay exits and Twilio falls through to this verb, playing on-hold music for the caller.
+    - Note: This is our fallback. A production application will actually do the routing.
 
 > [!TIP]
 > See the [ConversationRelay noun docs](https://www.twilio.com/docs/voice/conversationrelay/conversationrelay-noun) for all available attributes.
+
+> [!TIP]
+> You may use the [Twilio Node.js helper library](https://www.npmjs.com/package/twilio). But, returning a direct XML is fine as well.
 
 <details>
 <summary>💡 Click to see the solution</summary>
@@ -173,35 +178,23 @@ Open `build/routes/twiml.js`. Currently it returns a simple `<Say>` response.
 ```javascript
 export default async function twimlRoute(fastify) {
   fastify.post("/twiml", async (request, reply) => {
-    const host = request.headers.host;
-    const intelligenceServiceSid =
-      process.env.TWILIO_INTELLIGENCE_SERVICE_SID || "";
-
-    let conversationRelayAttrs = `url="wss://${host}/ws"`;
-    conversationRelayAttrs += ` welcomeGreeting="Hello! You've reached Signal City Transit. I'm Vanguard, your virtual assistant. How can I help you today?"`;
-    conversationRelayAttrs += ` ttsProvider="Google"`;
-    conversationRelayAttrs += ` interruptible="true"`;
-    conversationRelayAttrs += ` dtmfDetection="true"`;
-
-    if (intelligenceServiceSid) {
-      conversationRelayAttrs += ` intelligenceService="${intelligenceServiceSid}"`;
-    }
-
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+    reply.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <ConversationRelay ${conversationRelayAttrs}>
-      <Language code="en-US" voice="en-US-Journey-O" />
-      <Language code="en-GB" voice="en-GB-Journey-D" />
-      <Language code="en-IN" voice="en-IN-Journey-D" />
-      <Language code="en-AU" voice="en-AU-Journey-D" />
-      <Language code="hi-IN" voice="hi-IN-Wavenet-D" />
+    <ConversationRelay
+      url="wss://${request.headers.host}/ws"
+      welcomeGreeting="Welcome to Signal City Transit. I'm Vanguard, your virtual assistant. How can I help you today?"
+      interruptible="true"
+      dtmfDetection="true"
+      ttsProvider="ElevenLabs"
+      voice="jqcCZkN6Knx8BJ5TBdYR-0.9_0.8_0.8"
+      ${process.env.TWILIO_INTELLIGENCE_SERVICE_SID ? `intelligenceService="${process.env.TWILIO_INTELLIGENCE_SERVICE_SID}"` : ""}
+    >
     </ConversationRelay>
   </Connect>
   <Play loop="0">https://demo.twilio.com/docs/classic.mp3</Play>
-</Response>`;
+</Response>`);
 
-    reply.type("text/xml").send(twiml);
   });
 }
 ```
