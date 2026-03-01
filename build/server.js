@@ -21,7 +21,7 @@ if (missingVars.length > 0) {
   process.exit(1);
 }
 
-const fastify = Fastify({ logger: true });
+const fastify = Fastify({ logger: { base: undefined } });
 fastify.register(formbody);
 
 await fastify.register(websocket);

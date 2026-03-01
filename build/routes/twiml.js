@@ -1,39 +1,58 @@
-export default async function twimlRoute(fastify) {
-  fastify.post("/twiml", async (request, reply) => {
-    // TODO: Return TwiML response with <Connect><ConversationRelay> noun
-    //
-    // Requirements:
-    // - Set the WebSocket URL to wss://{request.headers.host}/ws
-    // - Set a welcomeGreeting message for Signal City Transit
-    // - Enable interruptible and dtmfDetection
-    // - If TWILIO_INTELLIGENCE_SERVICE_SID is set, add the intelligenceService attribute
-    // - Add <Play loop="0"> AFTER </Connect> with a hold music URL. When the agent sends
-    //   { type: "end" } to trigger a human transfer, ConversationRelay exits and Twilio
-    //   falls through to this verb, playing on-hold music for the caller indefinitely.
-    //
-    // Note: With <Language> elements, use <ConversationRelay ...>...</ConversationRelay>
-    // instead of the self-closing <ConversationRelay ... /> form.
-    //
-    // For Voice: see https://www.twilio.com/docs/voice/conversationrelay/voice-configuration.
-    // Reply with Content-Type "text/xml"
-    //
-    // Docs: https://www.twilio.com/docs/voice/twiml/connect/conversationrelay
+const WELCOME_GREETING=`Hi! This is Signal City Transit.
+I'm Vanguard, your virtual assistant. How can I help you today?`;
 
-    reply.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+export default async function twimlRoute(fastify) {
+
+  // TwiML endpoint for ConversationRelay
+  fastify.all("/twiml", async (request, reply) => {
+    const host = request.headers.host;
+    const intelligenceServiceSid =
+      process.env.TWILIO_INTELLIGENCE_SERVICE_SID || "";
+
+    // TODO: Build the TwiML XML string
+    //
+    // The TwiML should contain:
+    //   <Response>
+    //     <Connect action="/transfer" method="POST">
+    //       <ConversationRelay
+    //           url="wss://{host}/ws"
+    //           welcomeGreeting="{WELCOME_GREETING}"
+    //           ttsProvider="ElevenLabs"
+    //           language="en-US"
+    //           {intelligenceService if set} />
+    //     </Connect>
+    //   </Response>
+    //
+    // Key points:
+    // - action="/transfer" on <Connect> tells Twilio where to POST when ConversationRelay ends
+    // - Use self-closing <ConversationRelay ... /> tag
+    // - If intelligenceServiceSid is set, add: intelligenceService="${intelligenceServiceSid}"
+    //
+    // Docs: https://www.twilio.com/docs/voice/conversationrelay/conversationrelay-noun
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <ConversationRelay
-      url="wss://${request.headers.host}/ws"
-      welcomeGreeting="Welcome to Signal City Transit. I'm Vanguard, your virtual assistant. How can I help you today?"
-      interruptible="true"
-      dtmfDetection="true"
-      ttsProvider="ElevenLabs"
-      voice="jqcCZkN6Knx8BJ5TBdYR-0.8_0.8_0.8"
-      ${process.env.TWILIO_INTELLIGENCE_SERVICE_SID ? `intelligenceService="${process.env.TWILIO_INTELLIGENCE_SERVICE_SID}"` : ""}
-    >
-    </ConversationRelay>
-  </Connect>
-  <Play loop="0">https://demo.twilio.com/docs/classic.mp3</Play>
-</Response>`);
+  <Say>TwiML not implemented yet.</Say>
+</Response>`;
+
+    reply.type("text/xml").send(twiml);
+  });
+
+  // Handle transfer after ConversationRelay ends
+  fastify.all("/transfer", async (request, reply) => {
+    // TODO: Build TwiML XML that plays hold music
+    //
+    // Return:
+    //   <Response>
+    //     <Play loop="1">https://demo.twilio.com/docs/classic.mp3</Play>
+    //   </Response>
+    //
+    // This route is called by Twilio when the ConversationRelay session ends
+    // (triggered by the action="/transfer" attribute on <Connect>).
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Transfer not implemented yet.</Say>
+</Response>`;
+
+    reply.type("text/xml").send(twiml);
   });
 }

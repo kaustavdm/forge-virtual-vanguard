@@ -1,17 +1,16 @@
-import { streamChatCompletion } from "../services/llm.js";
+import { streamResponse } from "../services/llm.js";
 
+const sessions = new Map(); // Map of callSid to { conversationHistory, abortController }
 
 export default async function websocketRoute(fastify) {
   fastify.get("/ws", { websocket: true }, (socket, request) => {
     fastify.log.info("WebSocket connection established");
-    
-    const conversationHistory = []
-    let currentAbortController = null;
 
     socket.on("message", async (data) => {
       let message;
+      let session;
       try {
-        message = JSON.parse(data.toString());
+        message = JSON.parse(data);
       } catch {
         fastify.log.error("Failed to parse WebSocket message");
         return;
@@ -19,41 +18,47 @@ export default async function websocketRoute(fastify) {
 
       switch (message.type) {
         case "setup":
-          // TODO: Log session details (callSid, from, to)
-          // The setup message is sent once when the WebSocket connects.
-          // Fields: message.callSid, message.from, message.to, message.sessionId
-          fastify.log.info({ callSid: message.callSid, from: message.from, to: message.to }, "Call connected");
+          // TODO: Initialize this call's session in the sessions Map
+          //
+          // 1. Extract callSid from message
+          // 2. Create a new session: { conversationHistory: [], abortController: null }
+          // 3. Store it in the sessions Map with callSid as key
+          // 4. Save callSid on the socket (socket.callSid = callSid) for later lookup
+          // 5. Log the call details (callSid, from, to)
           break;
 
         case "prompt":
-          // TODO: Handle caller speech
+          // TODO: Handle caller speech — this is the core handler
           //
           // 1. Log message.voicePrompt
-          // 2. Add { role: "user", content: message.voicePrompt } to conversation history
-          // 3. Call streamChatCompletion(conversationHistory, onToken, onEnd, currentAbortController.signal)
-          //    - Pass currentAbortController.signal as the 4th argument to support cancellation on interrupt
-          //    - onToken callback: send { type: "text", token, last: false } via socket
-          //    - onEnd callback:
-          //      - If transferReason is set: speak "Transferring you to a human agent, please wait."
-          //        as { type: "text", token: "...", last: true }, then send { type: "end", handoffData: ... }
-          //        Twilio will fall through to <Play loop="0"> in TwiML and play hold music.
-          //      - Otherwise (normal end): send { type: "text", token: "", last: true } only.
-          //        Do NOT send { type: "end" } — ConversationRelay stays open until disconnect.
-          // 4. Handle errors gracefully - send an apology message to the caller
+          // 2. Get the session from the sessions Map using socket.callSid
+          // 3. If there's an existing abortController, abort it (cancel previous in-flight request)
+          // 4. Create a new AbortController and store it on the session
+          // 5. Push { role: "user", content: message.voicePrompt } to session.conversationHistory
+          // 6. Call: const { transferReason } = await streamResponse(
+          //      session.conversationHistory,
+          //      (token) => { socket.send(JSON.stringify({ type: "text", token, last: false })); },
+          //      session.abortController.signal,
+          //      fastify.log,
+          //    )
+          // 7. If transferReason:
+          //    - Log the transfer reason
+          //    - Send { type: "text", token: "Transferring you to a human agent, please wait.", last: true }
+          //    - Send { type: "end", handoffData: JSON.stringify({ reason, conversationHistory }) }
+          // 8. Else (normal end): send { type: "text", token: "", last: true }
+          // 9. Wrap in try/catch — catch AbortError and APIUserAbortError (ignore them),
+          //    for other errors send an apology message to the caller
           //
           // Docs: https://www.twilio.com/docs/voice/conversationrelay/websocket-messages
-          fastify.log.info({ voicePrompt: message.voicePrompt }, "Caller said");
-          conversationHistory.push({
-            role: "user",
-            content: message.voicePrompt,
-          });
-
           break;
 
         case "interrupt":
           // TODO: Handle caller interruption
+          //
           // The caller spoke while TTS was playing. Cancel any in-flight LLM request.
-          // Fields: message.utteranceUntilInterrupt, message.durationUntilInterruptMs
+          // 1. Log message.utteranceUntilInterrupt
+          // 2. Get session from sessions Map
+          // 3. If session has an abortController, abort it and set to null
           break;
 
         case "dtmf":
@@ -71,6 +76,10 @@ export default async function websocketRoute(fastify) {
 
     socket.on("close", () => {
       fastify.log.info("WebSocket connection closed");
+      // TODO: Clean up the session
+      //
+      // 1. Get the session from the sessions Map using socket.callSid
+      // 2. If session has an abortController, abort it
     });
   });
 }

@@ -8,7 +8,7 @@ The [RUNBOOK.md](./RUNBOOK.md) provides a step-by-step guide to:
 
 - Setting up Twilio ConversationRelay with a phone number webhook
 - Handling real-time WebSocket messages between caller and server
-- Integrating OpenAI GPT-5 mini with streaming and function calling
+- Integrating OpenAI GPT-5 mini with function calling (streaming is pre-built)
 - Building a voice agent that answers route questions, takes lost item reports, and escalates to humans
 - Adding Conversational Intelligence with pre-built and custom operators
 - Receiving post-call analysis via webhook
@@ -17,6 +17,9 @@ The [RUNBOOK.md](./RUNBOOK.md) provides a step-by-step guide to:
 
 > [!TIP]
 > The workshop uses a scaffolded Fastify application. You'll implement the core logic in `build/routes/` and `build/services/`. If you get stuck, check the [`./final/`](./final/) directory for the complete implementation.
+
+> [!NOTE]
+> This workshop uses OpenAI, but ConversationRelay is LLM-agnostic. You can swap in any provider — only `llm.js` needs to change.
 
 ## Workshop Structure
 
@@ -33,11 +36,11 @@ This repository is structured for hands-on learning:
 
 - [`build/routes/twiml.js`](./build/routes/twiml.js) - Return ConversationRelay TwiML
 - [`build/routes/websocket.js`](./build/routes/websocket.js) - Handle WebSocket messages from ConversationRelay
-- [`build/services/llm.js`](./build/services/llm.js) - OpenAI integration with streaming and tool calling
+- [`build/services/llm.js`](./build/services/llm.js) - OpenAI integration (streaming pre-built; you add system prompt, tools, and tool execution)
 - [`build/routes/intelligence.js`](./build/routes/intelligence.js) - Conversational Intelligence webhook handler
 - [`build/server.js`](./build/server.js) - Pre-configured Fastify server (no edits needed)
 - [`build/services/transit-data.js`](./build/services/transit-data.js) - Transit data query helpers (no edits needed)
 
 ---
 
-☮️.
+☮️

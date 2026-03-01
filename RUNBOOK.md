@@ -12,7 +12,7 @@
 
 - How to set up Twilio ConversationRelay to bridge phone calls with a WebSocket server
 - How to handle real-time WebSocket messages (speech, interrupts, DTMF)
-- How to integrate an LLM with streaming and function calling for voice conversations
+- How to integrate an LLM with function calling for voice conversations (streaming is pre-built)
 - How to use Twilio Conversational Intelligence for post-call analysis
 - How to create custom operators and receive analysis results via webhook
 
@@ -83,10 +83,10 @@ Take a moment to explore the [`./build/`](./build/) directory structure:
 
 - [`build/server.js`](./build/server.js) — Fastify server (pre-configured, no edits needed)
 - [`build/services/transit-data.js`](./build/services/transit-data.js) — Transit data helpers (pre-built)
+- [`build/services/llm.js`](./build/services/llm.js) — LLM integration (streaming is pre-built; you'll add the system prompt, tools, and tool execution)
 - [`build/routes/twiml.js`](./build/routes/twiml.js) — TwiML route (we'll implement this)
 - [`build/routes/websocket.js`](./build/routes/websocket.js) — WebSocket handler (we'll implement this)
-- [`build/services/llm.js`](./build/services/llm.js) — LLM integration (we'll implement this)
-- [`build/routes/intelligence.js`](./build/routes/intelligence.js) — Intelligence webhook (you'll implement this)
+- [`build/routes/intelligence.js`](./build/routes/intelligence.js) — Intelligence webhook (we'll implement this)
 - [`assets/routes.json`](./assets/routes.json) — Signal City Transit route data (shared)
 
 #### 1.4 Start ngrok
@@ -149,54 +149,53 @@ ConversationRelay requires the AI Features Addendum to be accepted on your Twili
 
 #### 2.3 Implement TwiML route
 
-Open `build/routes/twiml.js`. Currently it returns a simple `<Say>` response.
+Open `build/routes/twiml.js`. The route scaffolding is already in place — both `/twiml` and `/transfer` routes are registered with the host and intelligence SID extracted. You just need to replace the placeholder `<Say>` TwiML with the correct XML.
 
 > [!IMPORTANT]
-> **Your task:** Replace the `<Say>` placeholder with a `<ConversationRelay>` noun that connects to your WebSocket server.
+> **Your task:** Replace the placeholder TwiML in both routes with the correct XML.
 
-**Key implementation points:**
+**For the `/twiml` route — key points:**
 
-- Use `request.headers.host` to build the WebSocket URL: `wss://${request.headers.host}/ws`
-- Set a `welcomeGreeting` for Signal City Transit
-- Set `ttsProvider` to `"ElevenLabs"` (this is the default)
-- To add custom voices, see the docs on [Picking a Voice](https://www.twilio.com/docs/voice/conversationrelay/voice-configuration)
-- Enable `interruptible` and `dtmfDetection`
-- If `TWILIO_INTELLIGENCE_SERVICE_SID` is set in the environment, add the `intelligenceService` attribute
-- Add `<Play loop="0">` **after** `</Connect>` with a hold music URL — when the agent sends `{ type: "end" }` to trigger a human transfer example.
-    - ConversationRelay exits and Twilio falls through to this verb, playing on-hold music for the caller.
-    - Note: This is our fallback. A production application will actually do the routing.
+- Use `<Connect action="/transfer" method="POST">` as the wrapper — `action="/transfer"` tells Twilio where to POST when the ConversationRelay session ends (e.g., after a human transfer)
+- Inside `<Connect>`, add a self-closing `<ConversationRelay ... />` noun with:
+  - `url` — the WebSocket URL using `host`: `wss://${host}/ws`
+  - `welcomeGreeting` — use the `WELCOME_GREETING` constant
+  - `ttsProvider="ElevenLabs"` and `language="en-US"`
+  - If `intelligenceServiceSid` is set, add `intelligenceService="${intelligenceServiceSid}"`
+
+**For the `/transfer` route:**
+
+- Return `<Play loop="1">https://demo.twilio.com/docs/classic.mp3</Play>` — this plays hold music when a human transfer occurs
 
 > [!TIP]
 > See the [ConversationRelay noun docs](https://www.twilio.com/docs/voice/conversationrelay/conversationrelay-noun) for all available attributes.
 
-> [!TIP]
-> You may use the [Twilio Node.js helper library](https://www.npmjs.com/package/twilio). But, returning a direct XML is fine as well.
-
 <details>
 <summary>💡 Click to see the solution</summary>
 
-```javascript
-export default async function twimlRoute(fastify) {
-  fastify.post("/twiml", async (request, reply) => {
-    reply.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Connect>
-    <ConversationRelay
-      url="wss://${request.headers.host}/ws"
-      welcomeGreeting="Welcome to Signal City Transit. I'm Vanguard, your virtual assistant. How can I help you today?"
-      interruptible="true"
-      dtmfDetection="true"
-      ttsProvider="ElevenLabs"
-      voice="jqcCZkN6Knx8BJ5TBdYR-0.9_0.8_0.8"
-      ${process.env.TWILIO_INTELLIGENCE_SERVICE_SID ? `intelligenceService="${process.env.TWILIO_INTELLIGENCE_SERVICE_SID}"` : ""}
-    >
-    </ConversationRelay>
-  </Connect>
-  <Play loop="0">https://demo.twilio.com/docs/classic.mp3</Play>
-</Response>`);
+Replace the `/twiml` route's TwiML:
 
-  });
-}
+```javascript
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect action="/transfer" method="POST">
+    <ConversationRelay
+        url="wss://${host}/ws"
+        welcomeGreeting="${WELCOME_GREETING}"
+        ttsProvider="ElevenLabs"
+        language="en-US"
+        ${intelligenceServiceSid ? `intelligenceService="${intelligenceServiceSid}"` : ""} />
+  </Connect>
+</Response>`;
+```
+
+Replace the `/transfer` route's TwiML:
+
+```javascript
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Play loop="1">https://demo.twilio.com/docs/classic.mp3</Play>
+</Response>`;
 ```
 
 </details>
@@ -221,7 +220,7 @@ export default async function twimlRoute(fastify) {
 
 ### 3. WebSocket Message Handling
 
-Now let's handle the messages that ConversationRelay sends over the WebSocket. Open `build/routes/websocket.js` — the switch/case structure is already there, but the handlers are empty.
+Now let's handle the messages that ConversationRelay sends over the WebSocket. Open `build/routes/websocket.js` — the route skeleton is there with a `sessions` Map and switch/case structure, but the handlers are empty TODOs.
 
 > [!TIP]
 > ConversationRelay sends these message types over WebSocket:
@@ -238,17 +237,29 @@ Now let's handle the messages that ConversationRelay sends over the WebSocket. O
 The `setup` message arrives once when the WebSocket connects. It contains call metadata like `callSid`, `from`, and `to`.
 
 > [!IMPORTANT]
-> **Your task:** Log the call details from the setup message.
+> **Your task:** Initialize the session in the `sessions` Map and log the call details.
+
+**Key implementation points:**
+
+- Extract `callSid` from the message
+- Create a new session object `{ conversationHistory: [], abortController: null }` in the `sessions` Map
+- Store `callSid` on the socket (`socket.callSid = callSid`) for later lookup in other handlers
+- Log the call details
 
 <details>
 <summary>💡 Click to see the solution</summary>
 
 ```javascript
 case "setup":
-  fastify.log.info(
-    { callSid: message.callSid, from: message.from, to: message.to },
-    "Call connected",
-  );
+  const { callSid } = message;
+  fastify.log.info({ callSid }, "Call connected");
+
+  sessions.set(callSid, {
+    conversationHistory: [],
+    abortController: null,
+  });
+
+  socket.callSid = callSid;
   break;
 ```
 
@@ -259,107 +270,154 @@ case "setup":
 This is the core handler. When the caller speaks, ConversationRelay transcribes it and sends a `prompt` message with `voicePrompt` containing the text. You need to:
 
 1. Log what the caller said
-2. Add it to conversation history
+2. Add it to the session's conversation history
 3. Send it to the LLM and stream tokens back to ConversationRelay
 4. Handle the end of the response (including possible human transfer)
 
 > [!IMPORTANT]
-> **Your task:** Implement the prompt handler. This requires importing and calling `streamChatCompletion` from `../services/llm.js`.
+> **Your task:** Implement the prompt handler. The file already imports `streamResponse` from `../services/llm.js` and declares a `sessions` Map at module level.
 
 **Key implementation points:**
 
-- Add `import { streamChatCompletion } from "../services/llm.js";` at the top of the file
-- Maintain a `conversationHistory` array and an [`AbortController`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController) for cancellation
-- Call `streamChatCompletion(conversationHistory, onToken, onEnd, currentAbortController.signal)`:
-  - `onToken(token)` — Send `{ type: "text", token, last: false }` via the socket
-  - `onEnd(transferReason)`:
-    - If `transferReason` is **not null** (human transfer): speak `"Transferring you to a human agent, please wait."` as `{ type: "text", token: "...", last: true }`, then immediately send `{ type: "end", handoffData: JSON.stringify({ reason, conversationHistory }) }`. Twilio will fall through to the `<Play loop="0">` in TwiML and play hold music.
-    - If `transferReason` is **null** (normal end): send `{ type: "text", token: "", last: true }` to finalize TTS. Do **not** send `{ type: "end" }` — ConversationRelay stays open until the call disconnects naturally.
-- Wrap in try/catch — on error, send an apology message to the caller
+- Look up the session from the `sessions` Map using `socket.callSid`
+- Manage an [`AbortController`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController) on the session for cancellation
+- Call `streamResponse` with 4 arguments — it returns `{ transferReason }`:
+  ```javascript
+  const { transferReason } = await streamResponse(
+    session.conversationHistory,
+    (token) => { socket.send(JSON.stringify({ type: "text", token, last: false })); },
+    session.abortController.signal,
+    fastify.log,
+  );
+  ```
+- If `transferReason` is set (human transfer): speak `"Transferring you to a human agent, please wait."` as `{ type: "text", token: "...", last: true }`, then send `{ type: "end", handoffData: JSON.stringify({ reason, conversationHistory }) }`. Twilio will POST to the `/transfer` action URL and play hold music.
+- If `transferReason` is **null** (normal end): send `{ type: "text", token: "", last: true }` to finalize TTS. Do **not** send `{ type: "end" }` — ConversationRelay stays open until the call disconnects naturally.
+- Wrap in try/catch — catch both `AbortError` and `APIUserAbortError` (ignore them). For other errors, send an apology message to the caller.
 
 <details>
 <summary>💡 Click to see the solution</summary>
 
-Add this import at the top of the file:
+The complete `websocket.js` file:
 
 ```javascript
-import { streamChatCompletion } from "../services/llm.js";
-```
+import { streamResponse } from "../services/llm.js";
 
-Add these variables inside the WebSocket handler (before `socket.on("message", ...)`):
+const sessions = new Map(); // Map of callSid to { conversationHistory, abortController }
 
-```javascript
-const conversationHistory = [];
-let currentAbortController = null;
-```
+export default async function websocketRoute(fastify) {
+  fastify.get("/ws", { websocket: true }, (socket, request) => {
+    fastify.log.info("WebSocket connection established");
 
-Replace the `prompt` case:
+    socket.on("message", async (data) => {
+      let message;
+      let session;
+      try {
+        message = JSON.parse(data);
+      } catch {
+        fastify.log.error("Failed to parse WebSocket message");
+        return;
+      }
 
-```javascript
-case "prompt":
-  fastify.log.info({ voicePrompt: message.voicePrompt }, "Caller said");
-  conversationHistory.push({
-    role: "user",
-    content: message.voicePrompt,
+      switch (message.type) {
+        case "setup":
+          const { callSid } = message;
+          fastify.log.info({ callSid }, "Call connected");
+
+          sessions.set(callSid, {
+            conversationHistory: [],
+            abortController: null,
+          });
+
+          socket.callSid = callSid;
+          break;
+
+        case "prompt":
+          fastify.log.info({ voicePrompt: message.voicePrompt }, "Caller said");
+          session = sessions.get(socket.callSid);
+
+          if (session.abortController) {
+            session.abortController.abort();
+          }
+          session.abortController = new AbortController();
+
+          try {
+            session.conversationHistory.push({ role: "user", content: message.voicePrompt });
+
+            const { transferReason } = await streamResponse(
+              session.conversationHistory,
+              (token) => {
+                socket.send(JSON.stringify({ type: "text", token, last: false }));
+              },
+              session.abortController.signal,
+              fastify.log,
+            );
+
+            if (transferReason) {
+              fastify.log.info({ reason: transferReason }, "Transferring to human agent");
+              socket.send(
+                JSON.stringify({
+                  type: "text",
+                  token: "Transferring you to a human agent, please wait.",
+                  last: true,
+                }),
+              );
+              socket.send(
+                JSON.stringify({
+                  type: "end",
+                  handoffData: JSON.stringify({
+                    reason: transferReason,
+                    conversationHistory: session.conversationHistory,
+                  }),
+                }),
+              );
+            } else {
+              socket.send(JSON.stringify({ type: "text", token: "", last: true }));
+            }
+          } catch (error) {
+            if (error.name !== "AbortError" && error.name !== "APIUserAbortError") {
+              fastify.log.error(error, "LLM streaming error");
+              socket.send(
+                JSON.stringify({
+                  type: "text",
+                  token: "I'm sorry, I'm having trouble processing that. Could you try again?",
+                  last: true,
+                }),
+              );
+            }
+          }
+          break;
+
+        case "interrupt":
+          fastify.log.info({ utteranceUntilInterrupt: message.utteranceUntilInterrupt }, "Caller interrupted");
+          session = sessions.get(socket.callSid);
+          if (session.abortController) {
+            session.abortController.abort();
+            session.abortController = null;
+          }
+          break;
+
+        case "dtmf":
+          fastify.log.info({ digit: message.digit }, "DTMF received");
+          break;
+
+        case "error":
+          fastify.log.error({ description: message.description }, "ConversationRelay error");
+          break;
+
+        default:
+          fastify.log.warn({ type: message.type }, "Unknown message type");
+      }
+    });
+
+    socket.on("close", () => {
+      fastify.log.info("WebSocket connection closed");
+      const session = sessions.get(socket.callSid);
+      if (session?.abortController) {
+        session.abortController.abort();
+      }
+    });
   });
-
-  if (currentAbortController) {
-    currentAbortController.abort();
-  }
-  currentAbortController = new AbortController();
-
-  try {
-    await streamChatCompletion(
-      conversationHistory,
-      (token) => {
-        socket.send(
-          JSON.stringify({ type: "text", token, last: false }),
-        );
-      },
-      (transferReason) => {
-        if (transferReason) {
-          fastify.log.info(
-            { reason: transferReason },
-            "Transferring to human agent",
-          );
-          socket.send(
-            JSON.stringify({
-              type: "text",
-              token: "Transferring you to a human agent, please wait.",
-              last: true,
-            }),
-          );
-          socket.send(
-            JSON.stringify({
-              type: "end",
-              handoffData: JSON.stringify({
-                reason: transferReason,
-                conversationHistory,
-              }),
-            }),
-          );
-        } else {
-          socket.send(
-            JSON.stringify({ type: "text", token: "", last: true }),
-          );
-        }
-      },
-      currentAbortController.signal,
-    );
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      fastify.log.error(error, "LLM streaming error");
-      socket.send(
-        JSON.stringify({
-          type: "text",
-          token:
-            "I'm sorry, I'm having trouble processing that. Could you try again?",
-          last: true,
-        }),
-      );
-    }
-  }
-  break;
+}
 ```
 
 </details>
@@ -377,18 +435,19 @@ case "interrupt":
     { utteranceUntilInterrupt: message.utteranceUntilInterrupt },
     "Caller interrupted",
   );
-  if (currentAbortController) {
-    currentAbortController.abort();
-    currentAbortController = null;
+  session = sessions.get(socket.callSid);
+  if (session.abortController) {
+    session.abortController.abort();
+    session.abortController = null;
   }
   break;
 ```
 
 </details>
 
-#### 3.4 Handle `dtmf` and `error`
+#### 3.4 Handle `dtmf`, `error`, and `close`
 
-Simple logging handlers for DTMF key presses and errors.
+Simple logging handlers for DTMF key presses, errors, and session cleanup.
 
 <details>
 <summary>💡 Click to see the solution</summary>
@@ -406,13 +465,14 @@ case "error":
   break;
 ```
 
-Also add cleanup on socket close:
+Also add cleanup on socket close using the sessions Map:
 
 ```javascript
 socket.on("close", () => {
   fastify.log.info("WebSocket connection closed");
-  if (currentAbortController) {
-    currentAbortController.abort();
+  const session = sessions.get(socket.callSid);
+  if (session?.abortController) {
+    session.abortController.abort();
   }
 });
 ```
@@ -437,7 +497,7 @@ socket.on("close", () => {
 
 ### 4. LLM Integration
 
-This is where the agent comes alive. Open `build/services/llm.js` — you'll implement the system prompt, tool definitions, tool execution, and streaming chat completion.
+This is where the agent comes alive. Open `build/services/llm.js` — the streaming logic (`streamResponse`) is pre-built for you. You'll implement the system prompt, tool definitions, and tool execution.
 
 #### 4.1 Write the system prompt
 
@@ -477,7 +537,7 @@ Guidelines:
 
 #### 4.2 Define the tools
 
-OpenAI function calling requires tool definitions in JSON Schema format. Define 4 tools:
+The Responses API uses a flat tool definition format — each tool is `{ type: "function", name, description, parameters }` with no nested `function` wrapper (unlike Chat Completions). Define 4 tools:
 
 1. **`get_routes`** — No parameters. Returns all Signal City Transit routes.
 2. **`get_schedule`** — Takes `route_name` (string). Returns the schedule for a specific route.
@@ -485,7 +545,7 @@ OpenAI function calling requires tool definitions in JSON Schema format. Define 
 4. **`transfer_to_human`** — Takes `reason` (string). Transfers the caller to a human agent.
 
 > [!TIP]
-> See the [OpenAI function calling docs](https://platform.openai.com/docs/guides/function-calling) for the tool definition format.
+> See the [OpenAI Responses API docs](https://platform.openai.com/docs/api-reference/responses) for the tool definition format.
 
 <details>
 <summary>💡 Click to see the solution</summary>
@@ -494,83 +554,75 @@ OpenAI function calling requires tool definitions in JSON Schema format. Define 
 const tools = [
   {
     type: "function",
-    function: {
-      name: "get_routes",
-      description:
-        "Get a list of all Signal City Transit routes with their stops and descriptions.",
-      parameters: { type: "object", properties: {}, required: [] },
+    name: "get_routes",
+    description:
+      "Get a list of all Signal City Transit routes with their stops and descriptions.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  {
+    type: "function",
+    name: "get_schedule",
+    description:
+      "Get the schedule for a specific Signal City Transit route, including weekday and weekend service hours and frequency.",
+    parameters: {
+      type: "object",
+      properties: {
+        route_name: {
+          type: "string",
+          description:
+            'The name or partial name of the route (e.g. "Ferry", "Route 42", "Metro")',
+        },
+      },
+      required: ["route_name"],
     },
   },
   {
     type: "function",
-    function: {
-      name: "get_schedule",
-      description:
-        "Get the schedule for a specific Signal City Transit route, including weekday and weekend service hours and frequency.",
-      parameters: {
-        type: "object",
-        properties: {
-          route_name: {
-            type: "string",
-            description:
-              'The name or partial name of the route (e.g. "Ferry", "Route 42", "Metro")',
-          },
+    name: "report_lost_item",
+    description:
+      "Report a lost item on Signal City Transit. Collects caller details and creates a report.",
+    parameters: {
+      type: "object",
+      properties: {
+        caller_name: {
+          type: "string",
+          description: "The caller's name",
         },
-        required: ["route_name"],
+        route_name: {
+          type: "string",
+          description: "The route the caller was on when they lost the item",
+        },
+        item_description: {
+          type: "string",
+          description: "Description of the lost item",
+        },
+        contact_phone: {
+          type: "string",
+          description: "Phone number to reach the caller about the item",
+        },
       },
+      required: [
+        "caller_name",
+        "route_name",
+        "item_description",
+        "contact_phone",
+      ],
     },
   },
   {
     type: "function",
-    function: {
-      name: "report_lost_item",
-      description:
-        "Report a lost item on Signal City Transit. Collects caller details and creates a report.",
-      parameters: {
-        type: "object",
-        properties: {
-          caller_name: {
-            type: "string",
-            description: "The caller's name",
-          },
-          route_name: {
-            type: "string",
-            description: "The route the caller was on when they lost the item",
-          },
-          item_description: {
-            type: "string",
-            description: "Description of the lost item",
-          },
-          contact_phone: {
-            type: "string",
-            description: "Phone number to reach the caller about the item",
-          },
+    name: "transfer_to_human",
+    description:
+      "Transfer the caller to a human agent. Use when the caller requests a person or when you cannot fulfill their request.",
+    parameters: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          description: "Brief reason for the transfer",
         },
-        required: [
-          "caller_name",
-          "route_name",
-          "item_description",
-          "contact_phone",
-        ],
       },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "transfer_to_human",
-      description:
-        "Transfer the caller to a human agent. Use when the caller requests a person or when you cannot fulfill their request.",
-      parameters: {
-        type: "object",
-        properties: {
-          reason: {
-            type: "string",
-            description: "Brief reason for the transfer",
-          },
-        },
-        required: ["reason"],
-      },
+      required: ["reason"],
     },
   },
 ];
@@ -625,130 +677,30 @@ function executeToolCall(name, args) {
 
 </details>
 
-#### 4.4 Implement streaming chat completion
+#### 4.4 Review the pre-built streaming code
 
-This is the most complex function. It streams tokens from OpenAI to the WebSocket in real-time, and handles tool calls in a loop.
+The `streamResponse` function in `build/services/llm.js` is already fully implemented. You don't need to write it — but understanding it will help you debug and extend the agent.
 
-> [!IMPORTANT]
-> **Your task:** Replace the placeholder `streamChatCompletion` with the full streaming implementation.
+**What `streamResponse` does:**
 
-**The flow:**
+1. Calls the OpenAI Responses API with `stream: true`, passing the `SYSTEM_PROMPT` as `instructions` and the `conversationHistory` as `input`
+2. Streams text tokens to the caller via the `onToken` callback
+3. Handles tool calls in a loop — when the LLM requests tools, it executes them via `executeToolCall`, pushes results back to `conversationHistory`, and loops for another response
+4. Returns `{ transferReason }` — either `null` (normal response) or a string reason (human transfer requested)
 
-1. Build the messages array: system prompt + conversation history
-2. Call `client.chat.completions.create()` with `stream: true`. Pass `signal` in the second argument (request options) for abort support.
-3. Process the stream:
-   - **Text tokens** (`delta.content`) → call `onToken(token)` immediately
-   - **Tool call chunks** (`delta.tool_calls`) → accumulate arguments across chunks
-   - **Finish reason `"stop"`** → persist assistant message to **both** `messages` and `conversationHistory`, then call `onEnd(null)`
-   - **Finish reason `"tool_calls"`** → persist assistant + tool result messages to **both** arrays, execute each tool, loop back to step 2
-
-> [!IMPORTANT]
-> You must push new messages to **both** the local `messages` array and the `conversationHistory` array. The `messages` array is local to this function call, while `conversationHistory` persists across caller turns. If you only update `messages`, the model loses all context on the next turn.
-
-> [!NOTE]
-> Tool calls arrive as incremental chunks in the stream. You need to accumulate the function name and arguments across multiple chunks before parsing.
-
-<details>
-<summary>💡 Click to see the solution</summary>
+**Signature:**
 
 ```javascript
-export async function streamChatCompletion(conversationHistory, onToken, onEnd, signal) {
-  const messages = [{ role: "system", content: SYSTEM_PROMPT }, ...conversationHistory];
-
-  let continueLoop = true;
-
-  while (continueLoop) {
-    continueLoop = false;
-
-    const stream = await getClient().chat.completions.create({
-      model: "gpt-5-mini",
-      messages,
-      tools,
-      stream: true,
-    }, { signal });
-
-    let assistantContent = "";
-    let toolCalls = [];
-
-    for await (const chunk of stream) {
-      const choice = chunk.choices[0];
-      if (!choice) continue;
-
-      const delta = choice.delta;
-
-      if (delta?.content) {
-        assistantContent += delta.content;
-        onToken(delta.content);
-      }
-
-      if (delta?.tool_calls) {
-        for (const tc of delta.tool_calls) {
-          if (tc.index !== undefined) {
-            if (!toolCalls[tc.index]) {
-              toolCalls[tc.index] = {
-                id: tc.id || "",
-                function: { name: "", arguments: "" },
-              };
-            }
-            if (tc.id) toolCalls[tc.index].id = tc.id;
-            if (tc.function?.name)
-              toolCalls[tc.index].function.name += tc.function.name;
-            if (tc.function?.arguments)
-              toolCalls[tc.index].function.arguments += tc.function.arguments;
-          }
-        }
-      }
-
-      if (choice.finish_reason === "stop") {
-        if (assistantContent) {
-          const assistantMsg = { role: "assistant", content: assistantContent };
-          messages.push(assistantMsg);
-          conversationHistory.push(assistantMsg);
-        }
-        onEnd(null);
-      }
-
-      if (choice.finish_reason === "tool_calls") {
-        const assistantMsg = {
-          role: "assistant",
-          content: assistantContent || null,
-          tool_calls: toolCalls.map((tc) => ({
-            id: tc.id,
-            type: "function",
-            function: tc.function,
-          })),
-        };
-        messages.push(assistantMsg);
-        conversationHistory.push(assistantMsg);
-
-        for (const tc of toolCalls) {
-          const args = JSON.parse(tc.function.arguments);
-
-          if (tc.function.name === "transfer_to_human") {
-            onEnd(args.reason);
-            return;
-          }
-
-          const result = executeToolCall(tc.function.name, args);
-          const toolMsg = {
-            role: "tool",
-            tool_call_id: tc.id,
-            content: result,
-          };
-          messages.push(toolMsg);
-          conversationHistory.push(toolMsg);
-        }
-
-        toolCalls = [];
-        assistantContent = "";
-        continueLoop = true;
-      }
-    }
-  }
-}
+const { transferReason } = await streamResponse(
+  session.conversationHistory, // mutated in-place with assistant/tool messages
+  onToken,                     // (token: string) => void — called for each text chunk
+  signal,                      // AbortSignal — to cancel on interrupt
+  log,                         // fastify.log — for structured logging
+);
 ```
 
-</details>
+> [!NOTE]
+> The Responses API simplifies streaming compared to Chat Completions: tool calls arrive as complete `response.output_item.done` events instead of incremental chunks, and conversation history uses `type: "function_call"` / `type: "function_call_output"` instead of `role: "assistant"` with `tool_calls`.
 
 #### 4.5 Test the complete voice agent
 
@@ -816,7 +768,7 @@ This generative custom operator analyzes call transcripts and extracts how calle
 > [!NOTE]
 > This operator is created entirely in the Console — no code changes needed. It runs automatically after each call.
 
-#### 5.3 Enable pre-built operators
+#### 5.3 Enable pre-built operators (optional)
 
 In the same Intelligence Service:
 
@@ -836,10 +788,16 @@ If you implemented the full solution in Section 2.3, you're already set. Just ma
 <details>
 <summary>💡 Verify your twiml.js includes this logic</summary>
 
+In your TwiML template, the `<ConversationRelay>` tag should conditionally include the `intelligenceService` attribute:
+
 ```javascript
-if (intelligenceServiceSid) {
-  conversationRelayAttrs += ` intelligenceService="${intelligenceServiceSid}"`;
-}
+const intelligenceServiceSid =
+  process.env.TWILIO_INTELLIGENCE_SERVICE_SID || "";
+
+// Inside the TwiML template:
+`<ConversationRelay
+    ...
+    ${intelligenceServiceSid ? `intelligenceService="${intelligenceServiceSid}"` : ""} />`
 ```
 
 This should already be in your implementation from Section 2.3.
@@ -1027,6 +985,7 @@ You've built a production-grade Voice AI agent that:
 - [Conversational Intelligence Onboarding](https://www.twilio.com/docs/conversational-intelligence/onboarding)
 - [Generative Custom Operators](https://www.twilio.com/docs/conversational-intelligence/generative-custom-operators)
 - [ConversationRelay + Intelligence Integration](https://www.twilio.com/docs/conversational-intelligence/conversation-relay-integration)
+- [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses)
 - [OpenAI Function Calling](https://platform.openai.com/docs/guides/function-calling)
 
 ---
