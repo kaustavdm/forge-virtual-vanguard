@@ -269,7 +269,7 @@ This is the core handler. When the caller speaks, ConversationRelay transcribes 
 **Key implementation points:**
 
 - Add `import { streamChatCompletion } from "../services/llm.js";` at the top of the file
-- Maintain a `conversationHistory` array and an `AbortController` for cancellation
+- Maintain a `conversationHistory` array and an [`AbortController`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController) for cancellation
 - Call `streamChatCompletion(conversationHistory, onToken, onEnd, currentAbortController.signal)`:
   - `onToken(token)` — Send `{ type: "text", token, last: false }` via the socket
   - `onEnd(transferReason)`:

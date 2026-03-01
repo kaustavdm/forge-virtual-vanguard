@@ -1,6 +1,12 @@
+import { streamChatCompletion } from "../services/llm.js";
+
+
 export default async function websocketRoute(fastify) {
   fastify.get("/ws", { websocket: true }, (socket, request) => {
     fastify.log.info("WebSocket connection established");
+    
+    const conversationHistory = []
+    let currentAbortController = null;
 
     socket.on("message", async (data) => {
       let message;
@@ -16,6 +22,7 @@ export default async function websocketRoute(fastify) {
           // TODO: Log session details (callSid, from, to)
           // The setup message is sent once when the WebSocket connects.
           // Fields: message.callSid, message.from, message.to, message.sessionId
+          fastify.log.info({ callSid: message.callSid, from: message.from, to: message.to }, "Call connected");
           break;
 
         case "prompt":
@@ -35,6 +42,12 @@ export default async function websocketRoute(fastify) {
           // 4. Handle errors gracefully - send an apology message to the caller
           //
           // Docs: https://www.twilio.com/docs/voice/conversationrelay/websocket-messages
+          fastify.log.info({ voicePrompt: message.voicePrompt }, "Caller said");
+          conversationHistory.push({
+            role: "user",
+            content: message.voicePrompt,
+          });
+
           break;
 
         case "interrupt":

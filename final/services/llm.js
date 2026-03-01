@@ -4,11 +4,13 @@ import { getRoutes, getSchedule } from "./transit-data.js";
 let client;
 
 function getClient() {
-  if (!client) client = new OpenAI();
+  if (!client) client = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
   return client;
 }
 
-const SYSTEM_PROMPT = `You are Vanguard, the virtual assistant for Signal City Transit. You help callers with route information, schedules, and lost item reports.
+export const SYSTEM_PROMPT = `You are Vanguard, the virtual assistant for Signal City Transit. You help callers with route information, schedules, and lost item reports.
 
 Guidelines:
 - Be concise and conversational. Callers are listening, not reading — keep responses to 1-2 sentences when possible.
@@ -140,7 +142,7 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
     continueLoop = false;
 
     const stream = await getClient().chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-5-nano",
       messages,
       tools,
       stream: true,
@@ -200,14 +202,10 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
         messages.push(assistantMsg);
         conversationHistory.push(assistantMsg);
 
+        let transferReason = null;
+
         for (const tc of toolCalls) {
           const args = JSON.parse(tc.function.arguments);
-
-          if (tc.function.name === "transfer_to_human") {
-            onEnd(args.reason);
-            return;
-          }
-
           const result = executeToolCall(tc.function.name, args);
           const toolMsg = {
             role: "tool",
@@ -216,6 +214,15 @@ export async function streamChatCompletion(conversationHistory, onToken, onEnd, 
           };
           messages.push(toolMsg);
           conversationHistory.push(toolMsg);
+
+          if (tc.function.name === "transfer_to_human") {
+            transferReason = args.reason;
+          }
+        }
+
+        if (transferReason) {
+          onEnd(transferReason);
+          return;
         }
 
         toolCalls = [];

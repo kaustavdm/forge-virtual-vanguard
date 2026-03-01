@@ -21,7 +21,19 @@ export default async function twimlRoute(fastify) {
 
     reply.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>You have reached Twilio Forge: Virtual Vanguard.</Say>
+  <Connect>
+    <ConversationRelay
+      url="wss://${request.headers.host}/ws"
+      welcomeGreeting="Welcome to Signal City Transit. I'm Vanguard, your virtual assistant. How can I help you today?"
+      interruptible="true"
+      dtmfDetection="true"
+      ttsProvider="ElevenLabs"
+      voice="jqcCZkN6Knx8BJ5TBdYR-0.8_0.8_0.8"
+      ${process.env.TWILIO_INTELLIGENCE_SERVICE_SID ? `intelligenceService="${process.env.TWILIO_INTELLIGENCE_SERVICE_SID}"` : ""}
+    >
+    </ConversationRelay>
+  </Connect>
+  <Play loop="0">https://demo.twilio.com/docs/classic.mp3</Play>
 </Response>`);
   });
 }
