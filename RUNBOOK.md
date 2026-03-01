@@ -12,7 +12,7 @@
 
 - How to set up Twilio ConversationRelay to bridge phone calls with a WebSocket server
 - How to handle real-time WebSocket messages (speech, interrupts, DTMF)
-- How to integrate OpenAI GPT-5 mini with streaming and function calling for voice conversations
+- How to integrate an LLM with streaming and function calling for voice conversations
 - How to use Twilio Conversational Intelligence for post-call analysis
 - How to create custom operators and receive analysis results via webhook
 
@@ -21,7 +21,7 @@
 - **Node.js 24** (LTS version recommended)
 - **ngrok** installed and authenticated ([download](https://ngrok.com/download))
 - **Twilio Account**, upgraded and active, with a Voice-enabled phone number
-- **OpenAI API key** with GPT-5 mini access
+- **OpenAI API key** with GPT-5 mini access.
 - **Basic knowledge:** JavaScript/Node.js, HTTP APIs, WebSockets
 
 ---
@@ -52,7 +52,19 @@ Create a `.env` file from the template:
 cp .env.example .env
 ```
 
-Fill in your credentials:
+**Create Twilio API keys:**
+
+If you don't have Twilio credentials already, create a new Twilio API key:
+
+1. Log in to your [Twilio Console](https://console.twilio.com/)
+2. Navigate to **Account Info → API Keys**
+3. Click **"Create API Key"**
+4. Enter a friendly name (e.g., "Forge Virtual Vanguard")
+5. Save your **API Key SID** and **Secret** securely — the Secret is only shown once
+
+**Fill in your credentials:**
+
+Edit the `.env` file created in the step above and fill in the details:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
@@ -62,28 +74,20 @@ Fill in your credentials:
 | `OPENAI_API_KEY` | Your OpenAI API key | `sk-...` |
 | `PORT` | Server port (default 3000) | `3000` |
 
-**Create Twilio API keys:**
-
-1. Log in to your [Twilio Console](https://console.twilio.com/)
-2. Navigate to **Account Info → API Keys**
-3. Click **"Create API Key"**
-4. Enter a friendly name (e.g., "Forge Virtual Vanguard")
-5. Save your **API Key SID** and **Secret** securely — the Secret is only shown once
-
 > [!NOTE]
 > Leave `TWILIO_INTELLIGENCE_SERVICE_SID` blank for now. We'll set it up in Section 5.
 
 #### 1.3 Review bootstrap code
 
-> **Presenter-led section.** Take a moment to explore the [`./build/`](./build/) directory structure:
->
-> - [`build/server.js`](./build/server.js) — Fastify server (pre-configured, no edits needed)
-> - [`build/services/transit-data.js`](./build/services/transit-data.js) — Transit data helpers (pre-built)
-> - [`build/routes/twiml.js`](./build/routes/twiml.js) — TwiML route (you'll implement this)
-> - [`build/routes/websocket.js`](./build/routes/websocket.js) — WebSocket handler (you'll implement this)
-> - [`build/services/llm.js`](./build/services/llm.js) — LLM integration (you'll implement this)
-> - [`build/routes/intelligence.js`](./build/routes/intelligence.js) — Intelligence webhook (you'll implement this)
-> - [`assets/routes.json`](./assets/routes.json) — Signal City Transit route data (shared)
+Take a moment to explore the [`./build/`](./build/) directory structure:
+
+- [`build/server.js`](./build/server.js) — Fastify server (pre-configured, no edits needed)
+- [`build/services/transit-data.js`](./build/services/transit-data.js) — Transit data helpers (pre-built)
+- [`build/routes/twiml.js`](./build/routes/twiml.js) — TwiML route (we'll implement this)
+- [`build/routes/websocket.js`](./build/routes/websocket.js) — WebSocket handler (we'll implement this)
+- [`build/services/llm.js`](./build/services/llm.js) — LLM integration (we'll implement this)
+- [`build/routes/intelligence.js`](./build/routes/intelligence.js) — Intelligence webhook (you'll implement this)
+- [`assets/routes.json`](./assets/routes.json) — Signal City Transit route data (shared)
 
 #### 1.4 Start ngrok
 
@@ -101,9 +105,13 @@ Note your **Forwarding URL** (e.g., `https://abc123.ngrok-free.app`). You'll nee
 npm start
 ```
 
+> [!NOTE]
+> This will start the server from the `build/` directory.
+> If you want to test the `final/` code instead, run `npm run start:final`
+
 Verify the server starts by checking the health endpoint: `http://localhost:3000/health`
 
-✅ Setup done.
+✅ **Setup done.**
 
 ---
 
@@ -111,13 +119,18 @@ Verify the server starts by checking the health endpoint: `http://localhost:3000
 
 In this section, you'll configure Twilio ConversationRelay to bridge phone calls with your local server via WebSocket.
 
+> [!NOTE]
+> Production applications should implement websocket security with signature validation.
+> We will skip that for this workshop.
+> See [Twilio webhook security docs](https://www.twilio.com/docs/usage/webhooks/webhooks-security) for details.
+
 #### 2.1 Enable ConversationRelay
 
 ConversationRelay requires the AI Features Addendum to be accepted on your Twilio account.
 
 1. Go to the [Twilio Console](https://console.twilio.com/)
-2. Navigate to **Voice → Settings → AI Features**
-3. Accept the **AI Features Addendum**
+2. Navigate to **Voice → Settings → General**
+3. Turn on the **Predictive and Generative AI/ML Features Addendum**
 
 > [!IMPORTANT]
 > This step is required before ConversationRelay will work. See the [onboarding docs](https://www.twilio.com/docs/voice/conversationrelay/onboarding) for details.
@@ -126,15 +139,17 @@ ConversationRelay requires the AI Features Addendum to be accepted on your Twili
 
 1. In the Twilio Console, go to **Phone Numbers → Manage → Active Numbers**
 2. Select the phone number you want to use
+3. Go to **Configure** tab.
 3. Under **Voice Configuration**, set:
-   - **A call comes in:** Webhook
-   - **URL:** `{your_ngrok_url}/twiml` (e.g., `https://abc123.ngrok-free.app/twiml`)
-   - **HTTP Method:** POST
+    - **Configure with:** "Webhook, TwiML Bin, Function, Studio Flow, Proxy Service"
+    - **A call comes in:** Webhook
+    - **URL:** `{your_ngrok_url}/twiml` (e.g., `https://abc123.ngrok-free.app/twiml`)
+    - **HTTP Method:** POST
 4. Click **Save configuration**
 
 #### 2.3 Implement TwiML route
 
-Open `build/routes/twiml.js`. Currently it returns a simple `<Say>` response. Your task is to replace it with the `<Connect><ConversationRelay>` TwiML noun.
+Open `build/routes/twiml.js`. Currently it returns a simple `<Say>` response.
 
 > [!IMPORTANT]
 > **Your task:** Replace the `<Say>` placeholder with a `<ConversationRelay>` noun that connects to your WebSocket server.
