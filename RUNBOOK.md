@@ -825,7 +825,7 @@ export default async function intelligenceRoute(fastify) {
 
 #### 6.3 Create specialized operator: Human Escalation Request
 
-Conversational Intelligence offers six specialized operators designed specifically for AI agent conversations. **These are not pre-built toggles** — each must be manually created as a Generative Custom Operator using prompts provided by Twilio's ML team. Here you'll create the Human Escalation Request operator.
+Conversational Intelligence offers six specialized operators designed specifically for AI agent conversations. **These are not pre-built toggles** — each must be manually created as a Generative Custom Operator using prompts provided by Twilio. Here you'll create the Human Escalation Request operator.
 
 > [!IMPORTANT]
 > **Your task:** Create the Human Escalation Request operator in your Intelligence Service.
