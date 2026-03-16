@@ -771,43 +771,54 @@ In this final section, you'll receive analysis results programmatically via webh
 Open `build/routes/intelligence.js`. This endpoint receives POST requests from Conversational Intelligence after it finishes analyzing a call.
 
 > [!IMPORTANT]
-> **Your task:** Log the transcript and operator results from the webhook payload.
+> **Your task:** Fetch and log operator results using the Twilio Intelligence API.
 
 **Key implementation points:**
 
-- The payload contains `transcript_sid`, `service_sid`, and `operator_results`
-- Each operator result has: `name`, `operator_type`, `predicted_label`, `predicted_probability`, `text_generation_result`
+- The webhook is a **notification only** — it contains `transcript_sid` and `service_sid`, but **not** the operator results
+- You must fetch operator results via the Twilio SDK: `client.intelligence.v2.transcripts(transcript_sid).operatorResults.list()`
+- Create a Twilio client **at module level** using API key credentials (`TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_ACCOUNT_SID`) so it is reused across requests
+- Each operator result from the SDK has: `name`, `operatorType`, `predictedLabel`, `predictedProbability`, `textGenerationResults`, `jsonResults`
 - Log each operator's results and reply with `200`
 
 <details>
 <summary>💡 Click to see the solution</summary>
 
 ```javascript
+import twilio from "twilio";
+
+const client = twilio(
+  process.env.TWILIO_API_KEY_SID,
+  process.env.TWILIO_API_KEY_SECRET,
+  { accountSid: process.env.TWILIO_ACCOUNT_SID },
+);
+
 export default async function intelligenceRoute(fastify) {
   fastify.post("/webhook/intelligence", async (request, reply) => {
-    const payload = request.body;
+    const { transcript_sid, service_sid } = request.body;
 
     fastify.log.info(
-      {
-        transcriptSid: payload.transcript_sid,
-        serviceSid: payload.service_sid,
-      },
+      { transcriptSid: transcript_sid, serviceSid: service_sid },
       "Conversational Intelligence webhook received",
     );
 
-    if (payload.operator_results) {
-      for (const result of payload.operator_results) {
-        fastify.log.info(
-          {
-            operatorName: result.name,
-            operatorType: result.operator_type,
-            predictedLabel: result.predicted_label,
-            predictedProbability: result.predicted_probability,
-            textGenerationResult: result.text_generation_result,
-          },
-          "Operator result",
-        );
-      }
+    // The webhook is a notification only — fetch operator results via the API.
+    const results = await client.intelligence.v2
+      .transcripts(transcript_sid)
+      .operatorResults.list();
+
+    for (const result of results) {
+      fastify.log.info(
+        {
+          operatorName: result.name,
+          operatorType: result.operatorType,
+          predictedLabel: result.predictedLabel,
+          predictedProbability: result.predictedProbability,
+          textGenerationResults: result.textGenerationResults,
+          jsonResults: result.jsonResults,
+        },
+        "Operator result",
+      );
     }
 
     reply.status(200).send({ received: true });

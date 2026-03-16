@@ -1,28 +1,37 @@
+import twilio from "twilio";
+
+const client = twilio(
+  process.env.TWILIO_API_KEY_SID,
+  process.env.TWILIO_API_KEY_SECRET,
+  { accountSid: process.env.TWILIO_ACCOUNT_SID },
+);
+
 export default async function intelligenceRoute(fastify) {
   fastify.post("/webhook/intelligence", async (request, reply) => {
-    const payload = request.body;
+    const { transcript_sid, service_sid } = request.body;
 
     fastify.log.info(
-      {
-        transcriptSid: payload.transcript_sid,
-        serviceSid: payload.service_sid,
-      },
+      { transcriptSid: transcript_sid, serviceSid: service_sid },
       "Conversational Intelligence webhook received",
     );
 
-    if (payload.operator_results) {
-      for (const result of payload.operator_results) {
-        fastify.log.info(
-          {
-            operatorName: result.name,
-            operatorType: result.operator_type,
-            predictedLabel: result.predicted_label,
-            predictedProbability: result.predicted_probability,
-            textGenerationResult: result.text_generation_result,
-          },
-          "Operator result",
-        );
-      }
+    // The webhook is a notification only — fetch operator results via the API.
+    const results = await client.intelligence.v2
+      .transcripts(transcript_sid)
+      .operatorResults.list();
+
+    for (const result of results) {
+      fastify.log.info(
+        {
+          operatorName: result.name,
+          operatorType: result.operatorType,
+          predictedLabel: result.predictedLabel,
+          predictedProbability: result.predictedProbability,
+          textGenerationResults: result.textGenerationResults,
+          jsonResults: result.jsonResults,
+        },
+        "Operator result",
+      );
     }
 
     reply.status(200).send({ received: true });
