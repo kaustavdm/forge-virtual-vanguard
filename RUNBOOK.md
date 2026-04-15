@@ -21,6 +21,7 @@
 - **Node.js 24** (LTS version recommended)
 - **ngrok** installed and authenticated ([download](https://ngrok.com/download))
 - **Twilio Account**, upgraded and active, with a Voice-enabled phone number
+- **Twilio Dev Phone** (optional but recommended) — browser-based calling for testing without a cell phone ([docs](https://www.twilio.com/docs/labs/dev-phone))
 - **OpenAI API key** with GPT-5 mini access.
 - **Basic knowledge:** JavaScript/Node.js, HTTP APIs, WebSockets
 
@@ -54,13 +55,26 @@ cp .env.example .env
 
 **Create Twilio API keys:**
 
-If you don't have Twilio credentials already, create a new Twilio API key:
+If you don't have Twilio credentials already, follow these steps to create a new Twilio API key:
 
-1. Log in to your [Twilio Console](https://console.twilio.com/)
-2. Navigate to **Account Info → API Keys**
-3. Click **"Create API Key"**
-4. Enter a friendly name (e.g., "Forge Virtual Vanguard")
-5. Save your **API Key SID** and **Secret** securely — the Secret is only shown once
+1. Log in to your [Twilio Console](https://1console.twilio.com/)
+2. In the top-right corner, click your **account name** to open the account menu
+3. Select **"API keys & tokens"** from main screen (or navigate to **Settings → Accounts → API keys & tokens** in the left sidebar)
+4. On the API keys page, click the **"Create API key"** button
+5. Fill in the key details:
+   - **API key name :** Enter a descriptive name (e.g., "Forge Virtual Vanguard") — this helps you identify the key later
+   - **Key type:** Select **Standard** (this is sufficient for our use case; Main keys have broader account-level permissions)
+6. Click **"Create"**
+7. You'll see a confirmation screen with two values:
+   - **SID** — This is your API Key SID (starts with `SK`). Copy it now.
+   - **Secret** — This is your API Key Secret. Copy it now.
+
+> [!CAUTION]
+> The **Secret** is only displayed once on this screen. If you lose it, you'll need to create a new API key. Copy both the SID and Secret and store them somewhere safe before leaving this page.
+
+8. Check the **"Got it!"** acknowledgement checkbox and click **"Done"**
+
+You'll also need your **Account SID**, which is always visible on the [Twilio Console dashboard](https://1console.twilio.com/) under **Account Info** (starts with `AC`).
 
 **Fill in your credentials:**
 
@@ -89,17 +103,97 @@ Take a moment to explore the [`./build/`](./build/) directory structure:
 - [`build/routes/intelligence.js`](./build/routes/intelligence.js) — Intelligence webhook (we'll implement this)
 - [`assets/routes.json`](./assets/routes.json) — Signal City Transit route data (shared)
 
-#### 1.4 Start ngrok
+#### 1.4 Set up ngrok
 
-In a separate terminal, start ngrok:
+ngrok creates a public URL that tunnels traffic to your local server, which is required for Twilio to reach your machine.
+
+**Install ngrok:**
+
+If you don't have ngrok installed yet:
+
+1. Go to [ngrok.com/download](https://ngrok.com/download) and download the version for your OS
+2. **macOS (Homebrew):**
+   ```bash
+   brew install ngrok
+   ```
+   **Linux / manual install:** Unzip the download and move the binary to a directory in your `PATH` (e.g., `/usr/local/bin`)
+3. **Sign up** for a free ngrok account at [dashboard.ngrok.com/signup](https://dashboard.ngrok.com/signup) if you don't have one
+4. Copy your **Authtoken** from the [ngrok dashboard](https://dashboard.ngrok.com/get-started/your-authtoken)
+5. Authenticate your local install:
+   ```bash
+   ngrok config add-authtoken <YOUR_AUTHTOKEN>
+   ```
+
+**Start ngrok:**
+
+In a separate terminal (keep it running for the duration of the workshop):
 
 ```bash
 ngrok http 3000
 ```
 
+You should see output like:
+
+```
+Session Status                online
+Forwarding                    https://abc123.ngrok-free.app -> http://localhost:3000
+```
+
 Note your **Forwarding URL** (e.g., `https://abc123.ngrok-free.app`). You'll need this for configuring your Twilio phone number.
 
-#### 1.5 Start the server
+> [!TIP]
+> The ngrok URL changes every time you restart ngrok (on the free plan). If you restart ngrok, you'll need to update the webhook URL on your Twilio phone number in Section 2.2.
+
+#### 1.5 Set up Twilio Dev Phone (optional)
+
+The [Twilio Dev Phone](https://www.twilio.com/docs/labs/dev-phone) lets you make and receive calls from your browser — no personal cell phone needed. This is useful if you don't have cell service, your phone isn't nearby, or you want to keep testing entirely on your computer.
+
+> [!CAUTION]
+> The Dev Phone **overwrites the webhooks** on the phone number it uses. Do not use it with a phone number that's already configured for production traffic. Use a separate Twilio phone number for the Dev Phone, or use it only when you're not testing the main agent.
+
+**Install the Twilio CLI** (if you don't have it):
+
+```bash
+# macOS (Homebrew)
+brew tap twilio/brew && brew install twilio
+
+# npm (all platforms)
+npm install -g twilio-cli
+```
+
+**Log in to the CLI:**
+
+```bash
+twilio login
+```
+
+Enter your Account SID, API Key SID, and API Key Secret when prompted.
+
+**Install the Dev Phone plugin:**
+
+```bash
+twilio plugins:install @twilio-labs/plugin-dev-phone
+```
+
+**Start the Dev Phone:**
+
+```bash
+twilio dev-phone
+```
+
+This will:
+1. Set up the required Twilio services (Conversations, Sync, Serverless, TwiML App)
+2. Open a browser tab at `http://localhost:3001/` with a dial pad
+3. Assign a Twilio phone number you can use to make and receive calls
+
+To make a call, enter a destination number in the Dev Phone UI and click **Call**. To receive calls, dial the Dev Phone's assigned number from any phone.
+
+When you're done, press `Ctrl+C` in the terminal — the Dev Phone automatically cleans up the resources it created.
+
+> [!NOTE]
+> The Dev Phone runs on port 3001 by default, so it won't conflict with your server on port 3000.
+
+#### 1.6 Start the server
 
 ```bash
 npm start
@@ -128,8 +222,8 @@ In this section, you'll configure Twilio ConversationRelay to bridge phone calls
 
 ConversationRelay requires the AI Features Addendum to be accepted on your Twilio account.
 
-1. Go to the [Twilio Console](https://console.twilio.com/)
-2. Navigate to **Voice → Settings → General**
+1. Go to the [Twilio Console](https://1console.twilio.com/)
+2. Navigate to **Products & Services → Voice → Settings → Privacy & security**
 3. Turn on the **Predictive and Generative AI/ML Features Addendum**
 
 > [!IMPORTANT]
@@ -137,15 +231,15 @@ ConversationRelay requires the AI Features Addendum to be accepted on your Twili
 
 #### 2.2 Configure phone number webhook
 
-1. In the Twilio Console, go to **Phone Numbers → Manage → Active Numbers**
-2. Select the phone number you want to use
-3. Go to **Configure** tab.
+1. In the Twilio Console, go to **Numbers and senders → Phone Numbers → Inventory** or you can serach it in the upper right. 
+2. Select the phone number you want to use or buy one. 
+3. Go to **Configure Details** tab.
 3. Under **Voice Configuration**, set:
-    - **Configure with:** "Webhook, TwiML Bin, Function, Studio Flow, Proxy Service"
+    - **Edit details:** "Webhook, TwiML Bin, Function, Studio Flow, Proxy Service"
     - **A call comes in:** Webhook
     - **URL:** `{your_ngrok_url}/twiml` (e.g., `https://abc123.ngrok-free.app/twiml`)
     - **HTTP Method:** POST
-4. Click **Save configuration**
+4. Click **Save**
 
 #### 2.3 Implement TwiML route
 
@@ -843,7 +937,7 @@ Conversational Intelligence offers six specialized operators designed specifical
 
 **Steps:**
 
-1. In the [Twilio Console](https://console.twilio.com/), navigate to **Conversational Intelligence → Services** and select your service
+1. In the [Twilio Console](https://1console.twilio.com/), navigate to **Conversational Intelligence → Services** and select your service
 2. Click **"Create Custom Operator"**
 3. Configure the operator with these exact values:
 
