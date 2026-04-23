@@ -19,12 +19,14 @@
 ## Prerequisites
 
 - **Node.js 24** (LTS version recommended)
-- **ngrok** installed and authenticated ([download](https://ngrok.com/download))
 - **Twilio Account**, upgraded and active, with a Voice-enabled phone number
-- **Twilio Dev Phone** (optional but recommended) — browser-based calling for testing without a cell phone ([docs](https://www.twilio.com/docs/labs/dev-phone))
 - **OpenAI API key** with GPT-5 mini access.
 - **Basic knowledge:** JavaScript/Node.js, HTTP APIs, WebSockets
 - **VS Code** Any editor will do but we will be using this one on a mac
+
+## Prerequisites We Will Walkthrough
+- **ngrok** installed and authenticated ([download](https://ngrok.com/download))
+- **Twilio Dev Phone** (optional but recommended) — browser-based calling for testing without a cell phone ([docs](https://www.twilio.com/docs/labs/dev-phone))
 
 ---
 
@@ -32,7 +34,14 @@
 
 ### 1. Setup
 
-#### 1.1 Clone repo and install dependencies
+#### 1. 1 Create a folder for this workshop
+
+```bash
+mdkir signal_workshop
+cd signal_workshop
+```
+
+#### 1.2 Clone repo and install dependencies
 
 ```bash
 # Clone the repository
@@ -46,7 +55,7 @@ npm install
 > [!TIP]
 > This project uses npm workspaces. Running `npm install` in the root directory installs dependencies for both `build/` and `final/` directories.
 
-#### 1.2 Configure environment variables
+#### 1.3 Configure environment variables
 
 Create a `.env` file from the template:
 
@@ -92,7 +101,7 @@ Edit the `.env` file created in the step above and fill in the details:
 > [!NOTE]
 > Leave `TWILIO_INTELLIGENCE_SERVICE_SID` blank for now. We'll set it up in Section 5.
 
-#### 1.3 Review bootstrap code
+#### 1.4 Review bootstrap code
 
 Take a moment to explore the [`./build/`](./build/) directory structure:
 
@@ -104,7 +113,7 @@ Take a moment to explore the [`./build/`](./build/) directory structure:
 - [`build/routes/intelligence.js`](./build/routes/intelligence.js) — Intelligence webhook (we'll implement this)
 - [`assets/routes.json`](./assets/routes.json) — Signal City Transit route data (shared)
 
-#### 1.4 Set up ngrok
+#### 1.5 Set up ngrok
 
 ngrok creates a public URL that tunnels traffic to your local server, which is required for Twilio to reach your machine.
 
@@ -145,7 +154,7 @@ Note your **Forwarding URL** (e.g., `https://abc123.ngrok-free.app`). You'll nee
 > [!TIP]
 > The ngrok URL changes every time you restart ngrok (on the free plan). If you restart ngrok, you'll need to update the webhook URL on your Twilio phone number in Section 2.2.
 
-#### 1.5 Set up Twilio Dev Phone (optional)
+#### 1.6 Set up Twilio Dev Phone (optional)
 
 The [Twilio Dev Phone](https://www.twilio.com/docs/labs/dev-phone) lets you make and receive calls from your browser — no personal cell phone needed. This is useful if you don't have cell service, your phone isn't nearby, or you want to keep testing entirely on your computer.
 
@@ -194,7 +203,7 @@ When you're done, press `Ctrl+C` in the terminal — the Dev Phone automatically
 > [!NOTE]
 > The Dev Phone runs on port 3001 by default, so it won't conflict with your server on port 3000.
 
-#### 1.6 Start the server
+#### 1.7 Start the server
 
 ```bash
 npm start
