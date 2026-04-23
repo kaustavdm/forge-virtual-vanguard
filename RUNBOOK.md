@@ -37,7 +37,7 @@
 #### 1. 1 Create a folder for this workshop
 
 ```bash
-mdkir signal_workshop
+mkdir signal_workshop
 cd signal_workshop
 ```
 
