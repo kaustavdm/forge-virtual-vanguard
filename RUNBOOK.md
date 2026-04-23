@@ -203,6 +203,13 @@ npm start
 > This will start the server from the `build/` directory.
 > If you want to test the `final/` code instead, run `npm run start:final`
 
+```bash
+node build/server.js | jq
+```
+
+> [!NOTE]
+> You can run ths command and it will provide prettier logs and can be used instead of `npm run start`.
+
 Verify the server starts by checking the health endpoint: `http://localhost:3000/health`
 
 ✅ **Setup done.**
