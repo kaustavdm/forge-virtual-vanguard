@@ -23,9 +23,9 @@
 - **OpenAI API key** with GPT-5 mini access.
 - **Basic knowledge:** JavaScript/Node.js, HTTP APIs, WebSockets
 - **VS Code** Any editor will do but we will be using this one on a mac
+- - **ngrok** installed and authenticated ([download](https://ngrok.com/download))
 
 ## Prerequisites We Will Walkthrough
-- **ngrok** installed and authenticated ([download](https://ngrok.com/download))
 - **Twilio Dev Phone** (optional but recommended) — browser-based calling for testing without a cell phone ([docs](https://www.twilio.com/docs/labs/dev-phone))
 
 ---
