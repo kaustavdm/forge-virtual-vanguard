@@ -314,6 +314,13 @@ Replace the `/transfer` route's TwiML:
 #### 2.4 Test ConversationRelay connection
 
 1. Restart your server: `npm start`
+
+<[!NOTE]
+<If your server errors out when you try running it. You'll need to run this command and try again
+
+`lsof -ti:3000 | xargs kill -9`
+
+
 2. Call your Twilio phone number
 3. You should hear the welcome greeting: _"Hello! You've reached Signal City Transit..."_
 4. Check your server logs — you should see a WebSocket connection being established
