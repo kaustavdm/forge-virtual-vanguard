@@ -8,8 +8,6 @@
 
 ConversationRelay requires the **AI Features Addendum** to be accepted on your Twilio account.
 
-### Steps
-
 1. Go to the [Twilio Console](https://1console.twilio.com/)
 
 2. Navigate to **Products & Services → Voice → Settings → Privacy & security**
@@ -31,8 +29,6 @@ ConversationRelay requires the **AI Features Addendum** to be accepted on your T
 ## 2.2 Configure Phone Number Webhook
 
 Connect your Twilio phone number to your server by configuring the webhook URL.
-
-### Steps
 
 1. In the Twilio Console, go to **Phone Numbers → Manage → Active Numbers** (or search "phone numbers" in the upper right)
 
@@ -149,8 +145,6 @@ This greeting is spoken when the call first connects, before any WebSocket inter
 
 Let's verify ConversationRelay is working.
 
-### Steps
-
 1. **Make sure your server is running**:
    ```bash
    npm start
@@ -168,27 +162,6 @@ Let's verify ConversationRelay is working.
 
 5. **Check your server logs**:
    - You should see: `WebSocket connection established`
-
-### Expected Behavior
-
-✅ **Success**: You hear the welcome greeting and see WebSocket connection in logs
-
-❌ **No greeting**: Check that:
-- Webhook URL is correct in Twilio Console
-- ngrok is running and forwarding to port 3000
-- Server is running on port 3000
-
-> [!NOTE]
-> **The agent won't respond yet**: You haven't implemented the WebSocket handlers, so the agent can't process your speech. That's next in Section 3!
-
-### What Just Happened?
-
-1. Twilio received your call
-2. Twilio made a POST request to `https://<your-ngrok-url>/twiml`
-3. Your server returned TwiML with `<ConversationRelay>`
-4. Twilio opened a WebSocket connection to `wss://<your-ngrok-url>/ws`
-5. ConversationRelay spoke the welcome greeting using ElevenLabs TTS
-6. ConversationRelay is now waiting for you to speak
 
 ---
 

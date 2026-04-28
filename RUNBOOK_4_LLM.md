@@ -16,8 +16,6 @@ The system prompt defines Vanguard's persona and behavior. It's crucial for voic
 
 ### Open `build/services/llm.js`
 
-Find the `SYSTEM_PROMPT` constant (around line 15):
-
 ```javascript
 export const SYSTEM_PROMPT = `You are Vanguard, the virtual assistant for Signal City Transit. You help callers with route information, schedules, and lost item reports.
 
@@ -241,8 +239,6 @@ const { transferReason } = await streamResponse(
 
 Let's test the `get_routes` function.
 
-### Steps
-
 1. **Make sure your server is running**
 
 2. **Call your Twilio phone number**
@@ -272,8 +268,6 @@ Let's test the `get_routes` function.
 
 Let's test the `get_schedule` function.
 
-### Steps
-
 1. **Call your Twilio phone number**
 
 2. **Ask about a specific route**:
@@ -299,8 +293,6 @@ Let's test the `get_schedule` function.
 ## 4.7 Demo: Lost Item Tool Call
 
 Let's test the `report_lost_item` function.
-
-### Steps
 
 1. **Call your Twilio phone number**
 
@@ -341,8 +333,6 @@ Let's test the `report_lost_item` function.
 ## 4.8 Demo: Transfer to Human Tool Call
 
 Let's test the `transfer_to_human` function.
-
-### Steps
 
 1. **Call your Twilio phone number**
 
