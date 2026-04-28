@@ -552,47 +552,26 @@ socket.on("close", () => {
 
 ### 4. LLM Integration
 
-This is where the agent comes alive. Open `build/services/llm.js` — the streaming logic (`streamResponse`) is pre-built for you. You'll implement the system prompt, tool definitions, and tool execution.
+This is where the agent comes alive. You can choose any LLM provider, in this example we are using OpenAI.
 
-#### 4.1 Write the system prompt
+Open `build/services/llm.js` — this is pre-built for you, including the system prompt, tool definitions, tool execution, and streaming logic.
 
-The system prompt defines the agent's persona and behavior. Replace the placeholder `SYSTEM_PROMPT` with instructions for Vanguard, the Signal City Transit virtual assistant.
+#### 4.1 Review the system prompt
 
-> [!IMPORTANT]
-> **Your task:** Write a system prompt that instructs the model to be concise, use tools for data, and escalate when needed.
+The system prompt defines the agent's persona and behavior. It instructs the model to be Vanguard, the Signal City Transit virtual assistant.
 
-**Key points for the prompt:**
+**Key aspects of the prompt:**
 
-- Identify as "Vanguard" from Signal City Transit
-- Help with routes, schedules, and lost item reports
-- Be concise — 1-2 sentences per response (callers are listening, not reading)
-- **Voice-aware formatting:** This is a voice conversation — responses are read aloud by TTS. Instruct the model to never use markdown, bullet points, numbered lists, arrows, asterisks, or special characters. Everything should be natural spoken sentences.
-- Always use tools for data — never make up route information
-- Transfer to human when asked or when unable to help
+- Identifies as "Vanguard" from Signal City Transit
+- Helps with routes, schedules, and lost item reports
+- Keeps responses concise — 1-2 sentences (callers are listening, not reading)
+- **Voice-aware formatting:** Explicitly prohibits markdown, bullet points, numbered lists, arrows, asterisks, or special characters. Everything must be natural spoken sentences.
+- Always uses tools for data — never makes up route information
+- Transfers to human when asked or when unable to help
 
-<details>
-<summary>💡 Click to see the solution</summary>
+#### 4.2 Review the tool definitions
 
-```javascript
-const SYSTEM_PROMPT = `You are Vanguard, the virtual assistant for Signal City Transit. You help callers with route information, schedules, and lost item reports.
-
-Guidelines:
-- Be concise and conversational. Callers are listening, not reading — keep responses to 1-2 sentences when possible.
-- This is a voice conversation. Your responses will be read aloud by text-to-speech. Never use markdown, bullet points, numbered lists, arrows, asterisks, colons for lists, or any special characters. Write everything as natural spoken sentences.
-- When describing multiple items, use natural speech like "We have three routes: Route 42 the TwiliTown Express, Route 7 the Ferry Line, and Route 15 the Metro Connect." Do not list them with dashes or bullets.
-- Use the get_routes tool to answer questions about available routes.
-- Use the get_schedule tool when asked about specific route timing or frequency.
-- Use report_lost_item when a caller wants to report a lost item. Collect all required details: their name, the route they were on, a description of the item, and a callback phone number.
-- Use transfer_to_human when the caller explicitly asks to speak with a person or agent, or when you cannot help with their request.
-- Never make up route or schedule information. Only share data returned by the tools.
-- If a caller asks about something outside your capabilities, offer to transfer them to a human agent.`;
-```
-
-</details>
-
-#### 4.2 Define the tools
-
-The Responses API uses a flat tool definition format — each tool is `{ type: "function", name, description, parameters }` with no nested `function` wrapper (unlike Chat Completions). Define 4 tools:
+The implementation defines 4 tools using the Responses API format (flat `{ type: "function", name, description, parameters }` with no nested `function` wrapper):
 
 1. **`get_routes`** — No parameters. Returns all Signal City Transit routes.
 2. **`get_schedule`** — Takes `route_name` (string). Returns the schedule for a specific route.
@@ -602,144 +581,25 @@ The Responses API uses a flat tool definition format — each tool is `{ type: "
 > [!TIP]
 > See the [OpenAI Responses API docs](https://platform.openai.com/docs/api-reference/responses) for the tool definition format.
 
-<details>
-<summary>💡 Click to see the solution</summary>
-
-```javascript
-const tools = [
-  {
-    type: "function",
-    name: "get_routes",
-    description:
-      "Get a list of all Signal City Transit routes with their stops and descriptions.",
-    parameters: { type: "object", properties: {}, required: [] },
-  },
-  {
-    type: "function",
-    name: "get_schedule",
-    description:
-      "Get the schedule for a specific Signal City Transit route, including weekday and weekend service hours and frequency.",
-    parameters: {
-      type: "object",
-      properties: {
-        route_name: {
-          type: "string",
-          description:
-            'The name or partial name of the route (e.g. "Ferry", "Route 42", "Metro")',
-        },
-      },
-      required: ["route_name"],
-    },
-  },
-  {
-    type: "function",
-    name: "report_lost_item",
-    description:
-      "Report a lost item on Signal City Transit. Collects caller details and creates a report.",
-    parameters: {
-      type: "object",
-      properties: {
-        caller_name: {
-          type: "string",
-          description: "The caller's name",
-        },
-        route_name: {
-          type: "string",
-          description: "The route the caller was on when they lost the item",
-        },
-        item_description: {
-          type: "string",
-          description: "Description of the lost item",
-        },
-        contact_phone: {
-          type: "string",
-          description: "Phone number to reach the caller about the item",
-        },
-      },
-      required: [
-        "caller_name",
-        "route_name",
-        "item_description",
-        "contact_phone",
-      ],
-    },
-  },
-  {
-    type: "function",
-    name: "transfer_to_human",
-    description:
-      "Transfer the caller to a human agent. Use when the caller requests a person or when you cannot fulfill their request.",
-    parameters: {
-      type: "object",
-      properties: {
-        reason: {
-          type: "string",
-          description: "Brief reason for the transfer",
-        },
-      },
-      required: ["reason"],
-    },
-  },
-];
-```
-
-</details>
-
-#### 4.3 Implement tool execution
+#### 4.3 Review tool execution
 
 The `executeToolCall` function dispatches tool calls to the appropriate handlers. Each tool returns a JSON string that gets fed back to the LLM.
 
-> [!IMPORTANT]
-> **Your task:** Implement the switch/case for each tool name.
+**Implementation details:**
 
-**Key implementation points:**
+- `get_routes` → calls `getRoutes()` from transit-data.js and returns as JSON
+- `get_schedule` → calls `getSchedule(args.route_name)`, returns result or error if not found
+- `report_lost_item` → generates a reference number like `SCT-LI-XXXXXX` and returns confirmation
+- `transfer_to_human` → returns `{ action: "transfer", reason }` (the WebSocket handler uses this to end the session)
 
-- `get_routes` → call `getRoutes()` from transit-data.js and return as JSON
-- `get_schedule` → call `getSchedule(args.route_name)`, return result or error if not found
-- `report_lost_item` → generate a reference number like `SCT-LI-XXXXXX` and return confirmation
-- `transfer_to_human` → return `{ action: "transfer", reason }` (the WebSocket handler uses this to end the session)
+#### 4.4 Review the streaming implementation
 
-<details>
-<summary>💡 Click to see the solution</summary>
-
-```javascript
-function executeToolCall(name, args) {
-  switch (name) {
-    case "get_routes":
-      return JSON.stringify(getRoutes());
-    case "get_schedule": {
-      const schedule = getSchedule(args.route_name);
-      return schedule
-        ? JSON.stringify(schedule)
-        : JSON.stringify({ error: `No route found matching "${args.route_name}"` });
-    }
-    case "report_lost_item": {
-      const refNumber = `SCT-LI-${Math.random().toString().slice(2, 8)}`;
-      return JSON.stringify({
-        success: true,
-        reference_number: refNumber,
-        message: `Lost item report created. Reference: ${refNumber}`,
-        details: args,
-      });
-    }
-    case "transfer_to_human":
-      return JSON.stringify({ action: "transfer", reason: args.reason });
-    default:
-      return JSON.stringify({ error: `Unknown tool: ${name}` });
-  }
-}
-```
-
-</details>
-
-#### 4.4 Review the pre-built streaming code
-
-The `streamResponse` function in `build/services/llm.js` is already fully implemented. You don't need to write it — but understanding it will help you debug and extend the agent.
+The `streamResponse` function handles the complete LLM interaction with streaming and function calling.
 
 **What `streamResponse` does:**
 
 1. Calls the OpenAI Responses API with `stream: true`, passing the `SYSTEM_PROMPT` as `instructions` and the `conversationHistory` as `input`
-2. Streams text tokens to the caller via the `onToken` callback
+2. Streams text tokens to the caller via the `onToken` callback in real-time
 3. Handles tool calls in a loop — when the LLM requests tools, it executes them via `executeToolCall`, pushes results back to `conversationHistory`, and loops for another response
 4. Returns `{ transferReason }` — either `null` (normal response) or a string reason (human transfer requested)
 
@@ -756,27 +616,6 @@ const { transferReason } = await streamResponse(
 
 > [!NOTE]
 > The Responses API simplifies streaming compared to Chat Completions: tool calls arrive as complete `response.output_item.done` events instead of incremental chunks, and conversation history uses `type: "function_call"` / `type: "function_call_output"` instead of `role: "assistant"` with `tool_calls`.
-
-#### 4.5 Test the complete voice agent
-
-Restart your server and call the phone number. Try these scenarios:
-
-1. **Route inquiry:** _"What routes do you have?"_ → Agent should list the 3 Signal City Transit routes
-2. **Schedule inquiry:** _"When does the ferry run?"_ → Agent should provide Ferry Line schedule details
-3. **Lost item report:** _"I lost my backpack on the metro"_ → Agent should ask for your name, contact phone, and item details, then confirm with a reference number
-4. **Human escalation:** _"Can I speak to a real person?"_ → Agent should acknowledge and end the session with handoff data
-
-Check your server logs to see the tool calls being executed.
-
-> **Hint:** If you get stuck, check the [`./final/`](./final/) directory for the complete implementation. Run it with `npm run start:final`.
-
-- [ ] Agent responds to route questions with real data
-- [ ] Agent provides schedule information for specific routes
-- [ ] Agent collects lost item details and returns a reference number
-- [ ] Agent transfers to human when asked (call ends with handoff data)
-- [ ] Server logs show tool calls being executed
-
-✅ Voice agent complete!
 
 ---
 
